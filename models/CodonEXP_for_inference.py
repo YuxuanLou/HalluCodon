@@ -55,8 +55,7 @@ class CustomPlantRNAModel(nn.Module):
             self._esm2_initialized = True
         return self._esm2_instance
 
-    def load_state_dict(self, state_dict,
-                        strict=True):
+    def load_state_dict(self, state_dict, strict=True):
 
         own_state = self.state_dict()
 
@@ -75,8 +74,7 @@ class CustomPlantRNAModel(nn.Module):
             _ = self.esm2
             converted_esm2_state_dict = {}
             for key, value in esm2_state_dict.items():
-                converted_esm2_state_dict[
-                    key[5:]] = value
+                converted_esm2_state_dict[key[5:]] = value
 
             self.esm2.load_state_dict(converted_esm2_state_dict,strict=False)
 
@@ -84,15 +82,13 @@ class CustomPlantRNAModel(nn.Module):
 
     def _unload_esm2(self):
         if self.esm2 is not None:
-            print(
-                "Unloading ESM-2 model from VRAM...")
+            print("Unloading ESM-2 model from VRAM...")
             del self._esm2_instance
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
     def get_fusion_weights(self):
-        return F.softmax(self.fusion_raw_weights,
-                         dim=0)
+        return F.softmax(self.fusion_raw_weights,dim=0)
 
     def forward(self, cds_input_ids=None,
                 cds_attention_mask=None,
