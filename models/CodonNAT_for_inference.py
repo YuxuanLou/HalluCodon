@@ -40,7 +40,6 @@ class CustomPlantRNAModelmlm(nn.Module):
 
     @property
     def esm2(self):
-        """属性访问器，延迟初始化ESM2"""
         if not hasattr(self, '_esm2_instance'):
             self._esm2_instance = AutoModel.from_config(
                 self.esm2_config)
