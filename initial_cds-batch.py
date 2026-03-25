@@ -8,7 +8,7 @@ from Bio.Data import CodonTable
 from multimolecule import RnaTokenizer
 from transformers import AutoTokenizer, AutoConfig
 from safetensors.torch import load_file
-from mrnafm_pro_mlm import CustomPlantRNAModelmlm
+from models.CodonNAT import CustomPlantRNAModelmlm
 
 
 def translate_cds_to_protein(cds_sequence):
@@ -125,10 +125,10 @@ def process_protein_sequences(model,
             protein_id = record.id
             protein_sequence = str(record.seq).upper().replace(' ','').replace('\n', '').replace('\r', '')
             if len(protein_sequence) > 1022:
-                print(f"警告: 蛋白质序列 {protein_id} 长度({len(protein_sequence)})超过最大限制(1022)，跳过")
+                print(f"Warning: Protein sequence {protein_id} length ({len(protein_sequence)}) exceeds the maximum limit (1022), skipping")
                 continue
-            print(f"\n处理蛋白质: {protein_id}")
-            print(f"蛋白质序列: {protein_sequence}")
+            print(f"\nProcessing protein: {protein_id}")
+            print(f"Protein sequence: {protein_sequence}")
 
             try:
                 predicted_cds, translated_protein = predict_cds_from_protein(
@@ -145,36 +145,24 @@ def process_protein_sequences(model,
                 print(f"与原始蛋白质匹配: {translated_protein.rstrip('*') == protein_sequence}")
 
             except Exception as e:
-                print(f"处理蛋白质 {protein_id} 时出错: {str(e)}")
+                print(f"Error processing protein {protein_id}: {str(e)}")
                 continue
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='预测蛋白质序列对应的CDS序列')
-    parser.add_argument('--model_path', type=str,
-                        required=True,
-                        help='训练好的模型路径')
-    parser.add_argument('--input_file', type=str,
-                        required=True,
-                        help='输入的FASTA文件路径')
-    parser.add_argument('--output_file', type=str,
-                        required=True,
-                        help='输出的FASTA文件路径')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model_path', type=str, required=True)
+    parser.add_argument('--input_file', type=str, required=True)
+    parser.add_argument('--output_file', type=str, required=True)
     args = parser.parse_args()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print("加载分词器...")
     cds_tokenizer = RnaTokenizer.from_pretrained("multimolecule/mrnafm")
     protein_tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t33_650M_UR50D")
-    print(f"从 {args.model_path} 加载模型...")
     config = AutoConfig.from_pretrained("facebook/esm2_t33_650M_UR50D")
     model = CustomPlantRNAModelmlm(config).to(device)
     model.load_state_dict(load_file(f"{args.model_path}/model.safetensors"))
     model.eval()
     fusion_params = model.get_learned_parameters()
-    print(f"RNA权重: {fusion_params['alpha']:.6f}")
-    print(f"蛋白质权重: {fusion_params['beta']:.6f}")
-    print(f"\n开始处理FASTA文件: {args.input_file}")
     process_protein_sequences(
         model=model,
         cds_tokenizer=cds_tokenizer,
@@ -184,7 +172,7 @@ def main():
         device=device
     )
 
-    print(f"\n所有预测完成! 结果已保存到 {args.output_file}")
+    print(f"\nAll predictions completed! Results have been saved to {args.output_file}")
 
 
 if __name__ == "__main__":
