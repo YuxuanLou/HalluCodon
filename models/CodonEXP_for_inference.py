@@ -34,29 +34,18 @@ class CustomPlantRNAModel(nn.Module):
         self._esm2_initialized = False
         self.hidden_size = config.hidden_size if hasattr(
             config, 'hidden_size') else 1280
-        self.pooler = AttentionPooling(
-            self.hidden_size)
-        self.cds_layernorm = nn.LayerNorm(
-            self.hidden_size)
-        self.protein_layernorm = nn.LayerNorm(
-            self.hidden_size)
-        self.resnet_layernorm = nn.LayerNorm(
-            self.hidden_size)
+        self.pooler = AttentionPooling(self.hidden_size)
+        self.cds_layernorm = nn.LayerNorm(self.hidden_size)
+        self.protein_layernorm = nn.LayerNorm(self.hidden_size)
+        self.resnet_layernorm = nn.LayerNorm(self.hidden_size)
         self.activation = nn.GELU()
         self.dropout = nn.Dropout(0.2)
-        self.fusion_raw_weights = nn.Parameter(
-            torch.tensor([0.0, 0.0]))
-        self.fc1 = nn.Linear(self.hidden_size,
-                             self.hidden_size // 2)
-        self.fc2 = nn.Linear(
-            self.hidden_size // 2,
-            self.hidden_size // 4)
-        self.fc3 = nn.Linear(
-            self.hidden_size // 4, 1)
-        self.aux_fc1 = nn.Linear(self.hidden_size,
-                                 self.hidden_size // 2)
-        self.aux_fc2 = nn.Linear(
-            self.hidden_size // 2, 1)
+        self.fusion_raw_weights = nn.Parameter(torch.tensor([0.0, 0.0]))
+        self.fc1 = nn.Linear(self.hidden_size,self.hidden_size // 2)
+        self.fc2 = nn.Linear(self.hidden_size // 2,self.hidden_size // 4)
+        self.fc3 = nn.Linear(self.hidden_size // 4, 1)
+        self.aux_fc1 = nn.Linear(self.hidden_size,self.hidden_size // 2)
+        self.aux_fc2 = nn.Linear(self.hidden_size // 2, 1)
         self.loss_fn = nn.BCEWithLogitsLoss()
 
     @property
@@ -94,7 +83,6 @@ class CustomPlantRNAModel(nn.Module):
         return self
 
     def _unload_esm2(self):
-
         if self.esm2 is not None:
             print(
                 "Unloading ESM-2 model from VRAM...")
@@ -114,25 +102,18 @@ class CustomPlantRNAModel(nn.Module):
                 labels=None, **kwargs):
 
         pro_last_hidden_state = pre_computed_protein_embeddings
-        cds_outputs = self.plantrna(
-            input_ids=cds_input_ids,
-            attention_mask=cds_attention_mask)
+        cds_outputs = self.plantrna(input_ids=cds_input_ids,attention_mask=cds_attention_mask)
         cds_last_hidden_state = cds_outputs.last_hidden_state
         cds_last_hidden_state = self.cds_layernorm(cds_last_hidden_state)
         original_cds_features = cds_last_hidden_state.clone()
         weights = self.get_fusion_weights()
         alpha, beta = weights[0], weights[1]
         fused_hidden_state = (alpha * cds_last_hidden_state + beta * pro_last_hidden_state)
-        fused_hidden_state = self.resnet_layernorm(
-            fused_hidden_state)
-        fused_hidden_state = self.dropout(
-            fused_hidden_state)
-        fused_hidden_state = self.activation(
-            fused_hidden_state)
+        fused_hidden_state = self.resnet_layernorm(fused_hidden_state)
+        fused_hidden_state = self.dropout( fused_hidden_state)
+        fused_hidden_state = self.activation(fused_hidden_state)
 
-        pooled_output = self.pooler(
-            fused_hidden_state,
-            cds_attention_mask)
+        pooled_output = self.pooler(fused_hidden_state,cds_attention_mask)
         x = self.fc1(pooled_output)
         x = self.activation(x)
         x = self.dropout(x)
@@ -143,9 +124,7 @@ class CustomPlantRNAModel(nn.Module):
 
         outputs = {"logits": logits}
 
-        pooled_cds = self.pooler(
-            original_cds_features,
-            cds_attention_mask)
+        pooled_cds = self.pooler(original_cds_features,cds_attention_mask)
         aux_x = self.aux_fc1(pooled_cds)
         aux_x = self.activation(aux_x)
         aux_x = self.dropout(aux_x)
@@ -153,19 +132,14 @@ class CustomPlantRNAModel(nn.Module):
 
         if labels is not None:
             labels_float = labels.float()
-            main_loss = self.loss_fn(
-                logits.squeeze(-1), labels_float)
-            aux_loss = self.loss_fn(
-                aux_logits.squeeze(-1),
-                labels_float)
+            main_loss = self.loss_fn(logits.squeeze(-1), labels_float)
+            aux_loss = self.loss_fn(aux_logits.squeeze(-1),labels_float)
             total_loss = main_loss + 1.0 * aux_loss
             outputs["loss"] = total_loss
 
         return outputs
 
-    def compute_protein_embeddings(self,
-                                   protein_input_ids,
-                                   protein_attention_mask):
+    def compute_protein_embeddings(self,protein_input_ids,protein_attention_mask):
         device = next(self.parameters()).device
         with torch.no_grad():
             protein_outputs = self.esm2( input_ids=protein_input_ids.to(device),attention_mask=protein_attention_mask.to(device))
