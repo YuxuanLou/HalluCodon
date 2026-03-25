@@ -41,8 +41,7 @@ class CustomPlantRNAModelmlm(nn.Module):
     @property
     def esm2(self):
         if not hasattr(self, '_esm2_instance'):
-            self._esm2_instance = AutoModel.from_config(
-                self.esm2_config)
+            self._esm2_instance = AutoModel.from_config(self.esm2_config)
             self._esm2_initialized = True
         return self._esm2_instance
 
@@ -60,18 +59,14 @@ class CustomPlantRNAModelmlm(nn.Module):
             _ = self.esm2
             converted_esm2_state_dict = {}
             for key, value in esm2_state_dict.items():
-                converted_esm2_state_dict[
-                    key[5:]] = value
-            self.esm2.load_state_dict(
-                converted_esm2_state_dict,
-                strict=False)
+                converted_esm2_state_dict[key[5:]] = value
+            self.esm2.load_state_dict(converted_esm2_state_dict,strict=False)
         return self
 
     def _unload_esm2(self):
 
         if self.esm2 is not None:
-            print(
-                "Unloading ESM-2 model from VRAM...")
+            print("Unloading ESM-2 model from VRAM...")
             del self._esm2_instance
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
@@ -107,8 +102,7 @@ class CustomPlantRNAModelmlm(nn.Module):
             active_labels = labels.view(-1)[active_loss]
 
             if len(active_labels) > 0:
-                mlm_loss = self.mlm_loss_fn(
-                    active_logits, active_labels)
+                mlm_loss = self.mlm_loss_fn(active_logits, active_labels)
             else:
                 mlm_loss = torch.tensor(0.0,device=resnet_out.device, requires_grad=True)
 
