@@ -36,9 +36,7 @@ class CustomPlantRNAModelmlm(nn.Module):
         if pre_computed_protein_embeddings is not None:
             pro_last_hidden_state = pre_computed_protein_embeddings
         else:
-            protein_outputs = self.esm2(
-                input_ids=protein_input_ids,
-                attention_mask=protein_attention_mask)
+            protein_outputs = self.esm2(input_ids=protein_input_ids,attention_mask=protein_attention_mask)
             pro_last_hidden_state = protein_outputs.last_hidden_state
             pro_last_hidden_state = self.protein_layernorm(pro_last_hidden_state)
         cds_outputs = self.plantrna(input_ids=cds_input_ids,attention_mask=cds_attention_mask)
@@ -55,8 +53,7 @@ class CustomPlantRNAModelmlm(nn.Module):
             active_logits = mlm_prediction_scores.view(-1,self.vocab_size)[active_loss]
             active_labels = labels.view(-1)[active_loss]
             if len(active_labels) > 0:
-                mlm_loss = self.mlm_loss_fn(
-                    active_logits, active_labels)
+                mlm_loss = self.mlm_loss_fn(active_logits, active_labels)
             else:
                 mlm_loss = torch.tensor(0.0,device=resnet_out.device, requires_grad=True)
             outputs["loss"] = mlm_loss
