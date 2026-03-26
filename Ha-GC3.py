@@ -12,17 +12,15 @@ import numpy as np
 import random
 import pandas as pd
 from Bio.Seq import Seq
-from transformers import AutoTokenizer, \
-    AutoConfig, default_data_collator
+from transformers import AutoTokenizer, AutoConfig, default_data_collator
 from safetensors.torch import load_file
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, \
-    Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from collections import Counter
 
-from model2_inference import CustomPlantRNAModel
-from mrnafm_pro_mlm_inference import CustomPlantRNAModelmlm
+from models.CodonEXP_for_inference import CustomPlantRNAModel
+from models.CodonNAT_for_inference import CustomPlantRNAModelmlm
 from utils import CustomDataset
 
 
