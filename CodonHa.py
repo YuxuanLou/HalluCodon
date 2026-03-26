@@ -125,7 +125,7 @@ def parse_codon_frequency_csv(csv_path):
     df.rename(columns=column_map, inplace=True)
     required_cols = ['amino_acid', 'codon']
     if not all(col in df.columns for col in required_cols):
-        print("Error: The CSV file must contain 'amino acid' and 'codon' columns.")
+        print("Error: The CSV file must contain 'aa' and 'codon' columns.")
         return None
     if 'frequency_percent' in df.columns:
         df['frequency'] = df['frequency_percent'] / 100.0
@@ -133,7 +133,7 @@ def parse_codon_frequency_csv(csv_path):
         total_counts = df.groupby('amino_acid')['count'].transform('sum')
         df['frequency'] = df['count'] / total_counts
     else:
-        print("错误: CSV文件必须包含 '频率(%)' 或 '计数' 列。")
+        print("Error: The CSV file must contain either a 'frequency(%)' or a 'count' column.")
         return None
     df['codon'] = df['codon'].str.upper().str.replace('T', 'U')
     target_dist = {}
@@ -142,17 +142,16 @@ def parse_codon_frequency_csv(csv_path):
         if total_freq > 0:
             dist = {row['codon']: row['frequency'] / total_freq for _, row in group.iterrows()}
             target_dist[aa] = dist
-    print("成功加载并处理了密码子频率数据，生成了目标分布。")
     return target_dist
 
 
 class GradientOptimizer:
-    def __init__(self, model_dir,
-                 perplexity_model_dir,
+    def __init__(self, CodonEXP_model_dir,
+                 CodonNAT_model_dir,
                  iterations=16,
                  batch_size=16, top_n_return=5,
-                 perplexity_weight=1.0,
-                 hallucination_perplexity_weight=1,
+                 naturalness_weight=1.0,
+                 hallucination_naturalness_weight=1,
                  mutation_rate=0.15, patience=20,
                  use_reversibility_check=True,
                  max_iterations=96,
@@ -161,13 +160,13 @@ class GradientOptimizer:
                  codon_frequency_data=None,
                  codon_frequency_weight=1.0,
                  **kwargs):
-        self.model_dir = model_dir
+        self.model_dir = CodonEXP_model_dir
         self.iterations = iterations
         self.batch_size = batch_size
         self.top_n_return = top_n_return
-        self.perplexity_model_dir = perplexity_model_dir
-        self.perplexity_weight = perplexity_weight
-        self.hallucination_perplexity_weight = hallucination_perplexity_weight
+        self.perplexity_model_dir = CodonNAT_model_dir
+        self.perplexity_weight = naturalness_weight
+        self.hallucination_perplexity_weight = hallucination_naturalness_weight
         self.mutation_rate = mutation_rate
         self.patience = patience
         self.use_reversibility_check = use_reversibility_check
@@ -176,15 +175,12 @@ class GradientOptimizer:
         self.min_naturality_threshold = min_naturality_threshold
         self.target_dist = codon_frequency_data
         self.codon_frequency_weight = codon_frequency_weight
-        if self.target_dist and self.codon_frequency_weight > 0:
-            print(f"基于分布的密码子偏好性已启用，权重为: {self.codon_frequency_weight}")
         self.cds_tokenizer = RnaTokenizer.from_pretrained("multimolecule/mrnafm")
         self.protein_tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t33_650M_UR50D")
         self.config = AutoConfig.from_pretrained("facebook/esm2_t33_650M_UR50D")
         self.config.vocab_size = self.cds_tokenizer.vocab_size
         self.config.hidden_size = 1280
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"使用设备: {self.device}")
         self.naturality_model = CustomPlantRNAModelmlm(self.config).to(self.device)
         self.naturality_model.eval()
 
@@ -459,8 +455,7 @@ class GradientOptimizer:
                 if pos not in avg_gains:
                     avg_gains[pos] = {}
                 for codon, gain in codon_gains_dict.items():
-                    avg_gains[pos][codon] = \
-                        avg_gains[pos].get(codon,0.0) + gain
+                    avg_gains[pos][codon] = avg_gains[pos].get(codon,0.0) + gain
         for pos in avg_gains:
             for codon in avg_gains[pos]:
                 avg_gains[pos][codon] /= num_models
@@ -505,7 +500,7 @@ class GradientOptimizer:
                     protein_input_ids=protein_encoding.input_ids,
                     protein_attention_mask=protein_encoding.attention_mask).to(self.device)
                 model.plantrna.to('cpu')
-        print("--- 正在评估初始序列 ---")
+        print("--- Evaluating initial sequence ---")
         initial_expr = self.predict_expression_batch([cds_sequence], expr_protein_embs)[0]
         initial_nat = self.calculate_naturalness_with_mlm([cds_sequence],nat_protein_emb)[0]
         initial_fitness = initial_expr * (initial_nat ** self.perplexity_weight if initial_nat > 0 else 0)
@@ -514,9 +509,9 @@ class GradientOptimizer:
                 'expression': initial_expr,
                 'naturality': initial_nat,
                 'fitness': initial_fitness}}
-        # 1. 初始化日志记录列表
+
         log_records = []
-        # 2. 记录初始序列 (第0代)
+
         log_records.append({
             'iteration': 0,
             'fitness': initial_fitness,
@@ -535,10 +530,10 @@ class GradientOptimizer:
 
         while True:
             cycle_number += 1
-            print(f"\n==================== 开始第 {cycle_number} 代生成 ====================")
+            print(f"\n==================== Starting generation of cycle {cycle_number} ====================")
             for _ in range(self.iterations):
                 total_iterations_run += 1
-                print(f"--- 迭代 {total_iterations_run} ---",end='\r')
+                print(f"--- Iteration {total_iterations_run} ---", end='\r')
                 all_gains_by_pos = self.propose_mutations_with_gradients(current_sequence_for_generation,nat_protein_emb, expr_protein_embs)
                 best_proposals_by_pos = {}
                 for pos, gains_dict in all_gains_by_pos.items():
@@ -582,22 +577,19 @@ class GradientOptimizer:
                         new_sequence = "".join(mutated_codons_list)
 
                 while new_sequence in all_sequences_and_origins:
-                    print(f"\n迭代 {total_iterations_run}: 检测到循环。应用随机突变以跳出。")
+                    print(f"\nIteration {total_iterations_run}: Loop detected. Applying random mutations to escape.")
                     new_sequence = self._apply_random_synonymous_mutations(current_sequence_for_generation,num_mutations=1)
 
                 current_sequence_for_generation = new_sequence
                 all_sequences_and_origins[new_sequence] = total_iterations_run
 
-            print(f"\n完成 {self.iterations} 次迭代。总迭代次数: {total_iterations_run}。")
-
-            print(f"--- 第 {total_iterations_run} 次迭代后进行评估 ---")
+            print(f"--- Evaluation after iteration {total_iterations_run} ---")
 
             all_generated_seqs_set = set(all_sequences_and_origins.keys())
             already_evaluated_seqs_set = set(evaluated_data.keys())
             new_sequences_to_evaluate = list(all_generated_seqs_set - already_evaluated_seqs_set)
 
             if new_sequences_to_evaluate:
-                print(f"正在评估 {len(new_sequences_to_evaluate)} 个新的独立序列 (总计 {len(all_generated_seqs_set)} 个)。")
                 expression_scores = self.predict_expression_batch(new_sequences_to_evaluate,expr_protein_embs)
                 naturality_scores = self.calculate_naturalness_with_mlm(new_sequences_to_evaluate,nat_protein_emb)
 
@@ -605,7 +597,6 @@ class GradientOptimizer:
                     fitness = expr * (nat ** self.perplexity_weight if nat > 0 else 0)
                     evaluated_data[seq] = {'expression': expr,'naturality': nat,'fitness': fitness}
 
-                    # <--- 修改点 3: 使用 all_sequences_and_origins 获取精确的迭代次数
                     origin_iteration = all_sequences_and_origins.get(seq, total_iterations_run)  # Fallback just in case
                     log_records.append({
                         'iteration': origin_iteration,
@@ -615,21 +606,12 @@ class GradientOptimizer:
                         'sequence': seq,
                     })
 
-            else:
-                print("此轮生成中未产生新的独立序列。")
-
-                # <--- 修改点 4: 检查 results_dir 并保存CSV
             if results_dir and new_sequences_to_evaluate:
                 log_df = pd.DataFrame(log_records)
-                # <--- 修改点 5: 按 iteration 排序
                 log_df = log_df.sort_values(by=['iteration', 'fitness'], ascending=[True, False])
                 csv_path = os.path.join(results_dir, "optimization_log.csv")
                 log_df.to_csv(csv_path, index=False, encoding='utf-8')
-                print(f"优化过程日志已更新至: {csv_path}")
 
-            if not evaluated_data:
-                print("警告: 没有可供评估的有效序列。停止优化。")
-                break
 
             current_best_sequence = max(evaluated_data,key=lambda k: evaluated_data[k]['fitness'])
             current_best_fitness = evaluated_data[current_best_sequence]['fitness']
@@ -637,22 +619,18 @@ class GradientOptimizer:
             current_best_naturality = evaluated_data[current_best_sequence]['naturality']
 
             if current_best_fitness > global_best_fitness:
-                print(f"发现新的全局最优解！适应度从 {global_best_fitness:.6f} 提升至 {current_best_fitness:.6f}")
                 global_best_fitness = current_best_fitness
                 global_best_sequence = current_best_sequence
                 global_best_expression = current_best_expression
                 global_best_naturality = current_best_naturality
                 iteration_of_best_sequence = all_sequences_and_origins[global_best_sequence]
-                print(f"新的最优序列产生于迭代: {iteration_of_best_sequence}")
 
             iterations_since_improvement = total_iterations_run - iteration_of_best_sequence
-            print(f"全局最优适应度: {global_best_fitness:.6f} (来自第 {iteration_of_best_sequence} 次迭代)。")
-            print(f"距离上次提升已过迭代次数: {iterations_since_improvement}。耐心值: {self.patience}。")
             if total_iterations_run >= self.max_iterations or (
                     iterations_since_improvement >= self.patience and global_best_expression > self.min_expression_threshold and global_best_naturality > self.min_naturality_threshold):
                 break
 
-        print("\n==================== 优化完成 ====================")
+        print("\n==================== Optimization Complete ====================")
 
         final_sorted_sequences = sorted(evaluated_data.items(),key=lambda item: item[1]['fitness'],reverse=True)
         top_results = final_sorted_sequences[:min(self.top_n_return,len(final_sorted_sequences))]
@@ -686,89 +664,38 @@ def is_valid_cds(cds_sequence):
     if any(codons[i] in stop_codons for i in
            range(len(codons) - 1)):
         return False
-    if codons[-1] not in stop_codons:
-        print(
-            f"警告: CDS序列不以终止密码子结尾。最后一个密码子: {codons[-1]}")
     return True
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='使用梯度引导的幻觉方法优化CDS序列。')
-    parser.add_argument('--input', type=str,
-                        required=True,
-                        help='输入FASTA文件路径。')
-    parser.add_argument('--output', type=str,
-                        required=True,
-                        help='输出FASTA文件路径。')
-    parser.add_argument('--model_dir', type=str,
-                        default='./model',
-                        help='表达模型目录。')
-    parser.add_argument('--perplexity_model_dir',
-                        type=str, required=True,
-                        help='自然度(MLM)模型目录。')
-    parser.add_argument('--iterations', type=int,
-                        default=16,
-                        help='每次评估之间运行的生成迭代次数。')
-    parser.add_argument('--patience', type=int,
-                        default=20,
-                        help='如果最优分数在这么多*迭代*内没有改善，则停止。')
-    parser.add_argument('--batch_size', type=int,
-                        default=16,
-                        help='评估时的批处理大小。')
-    parser.add_argument('--seed', type=int,
-                        default=42,
-                        help='随机种子。')
-    parser.add_argument('--top_n_return',
-                        type=int, default=1,
-                        help='返回的最优序列数量。')
-    parser.add_argument('--perplexity_weight',
-                        type=float, default=1,
-                        help='适应度中自然度分数的权重。')
-    parser.add_argument('--max_iterations',
-                        type=int, default=96,
-                        help='在停止优化前的最大迭代次数。')
-    parser.add_argument(
-        '--min_expression_threshold', type=float,
-        default=0.9,
-        help='用于提前停止的最低表达分数阈值。')
-    parser.add_argument(
-        '--min_naturality_threshold', type=float,
-        default=0.6,
-        help='用于提前停止的最低自然度分数阈值。')
-    parser.add_argument(
-        '--hallucination_perplexity_weight',
-        type=float, default=1,
-        help='在梯度引导突变提议阶段，自然度概率的权重。')
-    parser.add_argument('--mutation_rate',
-                        type=float, default=0.15,
-                        help='每次迭代中突变的密码子百分比 (0.0 到 1.0)。')
-    parser.add_argument('--results_dir', type=str,
-                        default='./optimization_results',
-                        help='保存详细结果的目录。')
-    parser.add_argument(
-        '--use_reversibility_check',
-        action='store_true',
-        help='每一次迭代后，不强制每个位置的密码子向高表达概率增加的方向改变，再迭代一次')
-
-    parser.add_argument('--codon_frequency_file',
-                        type=str, required=True,
-                        help="包含密码子使用频率的CSV文件路径 (列应包括'氨基酸', '密码子', '频率(%%)'或'计数')。")
-    parser.add_argument(
-        '--codon_frequency_weight', type=float,
-        default=1.0,
-        help='在收益计算中密码子分布相似性增益的权重。默认值: 1.0。')
-
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input', type=str, required=True)
+    parser.add_argument('--output', type=str, required=True)
+    parser.add_argument('--CodonEXP_model_dir', type=str, required=True)
+    parser.add_argument('--CodonNAT_model_dir', type=str, required=True)
+    parser.add_argument('--iterations', type=int, default=16)
+    parser.add_argument('--patience', type=int, default=20)
+    parser.add_argument('--batch_size', type=int, default=16)
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--top_n_return', type=int, default=1)
+    parser.add_argument('--perplexity_weight', type=float, default=1)
+    parser.add_argument('--max_iterations', type=int, default=96)
+    parser.add_argument('--min_expression_threshold', type=float, default=0.9)
+    parser.add_argument('--min_naturality_threshold', type=float, default=0.6)
+    parser.add_argument('--hallucination_perplexity_weight', type=float, default=1)
+    parser.add_argument('--mutation_rate', type=float, default=0.15)
+    parser.add_argument('--results_dir', type=str, default='./optimization_results')
+    parser.add_argument('--use_reversibility_check', action='store_true')
+    parser.add_argument('--codon_frequency_file', type=str, required=True)
+    parser.add_argument('--codon_frequency_weight', type=float, default=1.0)
     args = parser.parse_args()
-
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
-    target_distribution = parse_codon_frequency_csv(
-        args.codon_frequency_file)
+    target_distribution = parse_codon_frequency_csv(args.codon_frequency_file)
     if target_distribution is None:
         return
 
@@ -780,10 +707,10 @@ def main():
     optimizer = GradientOptimizer(**optimizer_args)
 
     for seq_id, cds_sequence in sequences.items():
-        print(f"\n==================== 正在优化序列: {seq_id} ====================")
+        print(f"\n==================== Optimizing sequence: {seq_id} ====================")
         cds_sequence = t_to_u(cds_sequence.upper())
         if not is_valid_cds(cds_sequence):
-            print(f"序列 {seq_id} 无效，跳过。")
+            print(f"Sequence {seq_id} is invalid, skipping.")
             optimized_sequences[seq_id] = {
             'sequence': cds_sequence,
             'naturality': 'N/A',
@@ -798,7 +725,7 @@ def main():
         result = optimizer.optimize_with_gradients(cds_sequence, results_dir=seq_results_dir)
 
         if not result or not result.get('top_sequences'):
-            print(f"序列 {seq_id} 优化失败，保留原始序列。")
+            print(f"Sequence {seq_id} optimization failed, keeping the original sequence.")
             optimized_sequences[seq_id] = {'sequence': cds_sequence,'naturality': 'N/A','expression': 'N/A','fitness': 'N/A'}
             continue
 
@@ -813,25 +740,25 @@ def main():
         seq_results_dir = os.path.join(args.results_dir, seq_name)
         os.makedirs(seq_results_dir,exist_ok=True)
         with open(os.path.join(seq_results_dir,"summary.txt"),'w', encoding='utf-8') as f:
-            f.write(f"原始 CDS: {result['original_sequence']}\n")
-            f.write(f"蛋白质: {result['protein_sequence']}\n\n")
-            f.write(f"最优序列发现于: {result['best_sequence_origin']}\n")
+            f.write(f"Original CDS: {result['original_sequence']}\n")
+            f.write(f"Protein: {result['protein_sequence']}\n\n")
+            f.write(f"Best sequence found at: {result['best_sequence_origin']}\n")
 
             original_expr = result['original_expression']
             original_nat = result['original_naturality']
             original_fitness = original_expr * (original_nat ** optimizer.perplexity_weight if original_nat > 0 else 0)
 
-            f.write(f"原始适应度 (重新评估): {original_fitness:.4f}\n")
-            f.write(f"  - 表达量: {original_expr:.4f}\n")
-            f.write(f"  - 自然度 (MLM): {original_nat:.4f}\n\n")
-            f.write("--- 顶部优化序列 ---\n")
+            f.write(f"Original fitness: {original_fitness:.4f}\n")
+            f.write(f"  - Expression level: {original_expr:.4f}\n")
+            f.write(f"  - Naturalness (MLM): {original_nat:.4f}\n\n")
+            f.write("--- Top optimized sequences ---\n")
             for i in range(len(result['top_sequences'])):
-                f.write(f"\n排名 {i + 1}:\n")
-                f.write(f"  序列: {result['top_sequences'][i]}\n")
-                f.write(f"  适应度: {result['top_fitness_scores'][i]:.4f}\n")
-                f.write(f"  表达量: {result['top_expressions'][i]:.4f}\n")
-                f.write(f"  自然度 (MLM): {result['top_naturalities'][i]:.4f}\n")
-        print(f"\n序列 {seq_id} 的优化已完成。最优序列发现于: {result['best_sequence_origin']}")
+                f.write(f"\nRank {i + 1}:\n")
+                f.write(f"  Sequence: {result['top_sequences'][i]}\n")
+                f.write(f"  Fitness: {result['top_fitness_scores'][i]:.4f}\n")
+                f.write(f"  High-expression probability: {result['top_expressions'][i]:.4f}\n")
+                f.write(f"  Naturalness: {result['top_naturalities'][i]:.4f}\n")
+        print(f"\nOptimization for sequence {seq_id} is complete. Best sequence found at: {result['best_sequence_origin']}")
 
     if args.output:
         output_dir = os.path.dirname(args.output)
@@ -845,12 +772,12 @@ def main():
                 fitness = seq_data['fitness']
 
                 if naturality == 'N/A' or expression == 'N/A' or fitness == 'N/A':
-                    f.write(f">{seq_id} naturality=N/A expression=N/A fitness=N/A\n")
+                    f.write(f">{seq_id} naturalness=N/A expression=N/A fitness=N/A\n")
                 else:
                     f.write(f">{seq_id} naturalness={naturality:.4f} expression={expression:.4f} fitness={fitness:.4f}\n")
                 f.write(f"{sequence}\n")
 
-    print(f"\n所有序列处理完毕。优化后的FASTA文件已保存至: {args.output}")
+    print(f"\nAll sequences processed. Optimized FASTA file saved to: {args.output}")
 
 
 if __name__ == "__main__":
