@@ -684,7 +684,7 @@ def main():
     parser.add_argument('--min_naturality_threshold', type=float, default=0.6)
     parser.add_argument('--hallucination_perplexity_weight', type=float, default=1)
     parser.add_argument('--mutation_rate', type=float, default=0.15)
-    parser.add_argument('--results_dir', type=str, default='./optimization_results')
+    parser.add_argument('--results_dir', type=str, required=True)
     parser.add_argument('--use_reversibility_check', action='store_true')
     parser.add_argument('--codon_frequency_file', type=str, required=True)
     parser.add_argument('--codon_frequency_weight', type=float, default=1.0)
