@@ -19,8 +19,8 @@ import time
 import gc
 
 
-from model2_inference import CustomPlantRNAModel
-from mrnafm_pro_mlm_inference import CustomPlantRNAModelmlm
+from CodonEXP_for_inference import CustomPlantRNAModel
+from CodonNAT_for_inference import CustomPlantRNAModelmlm
 from utils import CustomDataset
 
 
@@ -90,7 +90,6 @@ class MLMDataCollator:
         random_words = self.random_cache[seq_length]["words"].clone().to(device).unsqueeze(0).expand(batch_size, -1)
         inputs[indices_random] = random_words[indices_random]
 
-        # 更新批次
         batch["cds_input_ids"] = inputs
         batch["labels"] = labels
         return batch
@@ -152,19 +151,19 @@ for codon, aa in codon_table.items():
 
 class GeneticOptimizer:
     def __init__(self,
-                 model_dir='./full_dataset_models',
-                 perplexity_model_dir='./perplexity_model',
+                 CodonEXP_model_dir,
+                 CodonNAT_model_dir,
                  population_size=50,
                  mutation_rate=5,
                  crossover_rate=0.7,
                  max_generations=100,
                  batch_size=50,
-                 weights_save_path='./attention_weights',
+                 weights_save_path,
                  selection_top_percent=0.2,
                  top_n_return=5,
-                 perplexity_weight=1):
+                 naturalness_weight=1):
 
-        self.model_dir = model_dir
+        self.model_dir = CodonEXP_model_dir
         self.population_size = population_size
         self.mutation_rate = mutation_rate
         self.crossover_rate = crossover_rate
@@ -173,18 +172,15 @@ class GeneticOptimizer:
         self.weights_save_path = weights_save_path
         self.selection_top_percent = selection_top_percent
         self.top_n_return = top_n_return
-        self.perplexity_model_dir = perplexity_model_dir
-        self.perplexity_weight = perplexity_weight  # 新增：混淆度权重
+        self.perplexity_model_dir = CodonNAT_model_dir
+        self.perplexity_weight = naturalness_weight
 
         # Create directory for saving weights if it doesn't exist
         os.makedirs(self.weights_save_path,exist_ok=True)
 
-        # Initialize tokenizers and models
         self.cds_tokenizer = RnaTokenizer.from_pretrained("multimolecule/mrnafm")
         self.protein_tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t33_650M_UR50D")
-        # Load configuration and models
         self.config = AutoConfig.from_pretrained("facebook/esm2_t33_650M_UR50D")
-        # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.perplexity_model = CustomPlantRNAModelmlm(self.config)
 
@@ -562,7 +558,6 @@ class GeneticOptimizer:
         print(f"Optimized expression probability: {best_expression:.4f}")
         print(f"Optimized perplexity: {best_perplexity:.4f}")
 
-        # 从全局序列跟踪器中获取前n个最优序列
         sorted_sequences = sorted([(seq, data['expression'] * (data['perplexity'] ** self.perplexity_weight)) for seq, data in self.all_sequences_data.items()],
                                   key=lambda x: x[1],
                                   reverse=True)
@@ -597,76 +592,38 @@ def u_to_t(sequence):
 
 
 def is_valid_cds(cds_sequence):
-    if len(cds_sequence) % 3 != 0:
-        print("序列长度不为3的倍数")
-        return False
-    if not re.fullmatch('^[AUGC]*$',
-                        cds_sequence):
-        print("序列含有未知核苷酸")
+    if len(cds_sequence) % 3 != 0 or not re.fullmatch(
+            '^[AUGC]*$', cds_sequence):
         return False
     stop_codons = {'UAA', 'UAG', 'UGA'}
-    for i in range(0, len(cds_sequence) - 3, 3):
-        codon = cds_sequence[i:i + 3]
-        if codon in stop_codons:
-            print("序列含有终止密码子", i)
-            return False
+    codons = [cds_sequence[i:i + 3] for i in
+              range(0, len(cds_sequence), 3)]
+    if any(codons[i] in stop_codons for i in
+           range(len(codons) - 1)):
+        return False
     return True
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='优化CDS序列')
-    parser.add_argument('--input', type=str,
-                        required=True,
-                        help='输入fasta文件路径')
-    parser.add_argument('--output', type=str,
-                        required=True,
-                        help='输出fasta文件路径')
-    parser.add_argument('--model_dir', type=str,
-                        default='./model',
-                        help='模型路径')
-    parser.add_argument('--perplexity_model_dir',
-                        type=str, default=None,
-                        help='计算自然度模型路径')
-    parser.add_argument('--population_size',
-                        type=int, default=100,
-                        help='种群大小')
-    parser.add_argument('--mutation_rate',
-                        type=float, default=0.05,
-                        help='突变率')
-    parser.add_argument('--crossover_rate',
-                        type=float, default=0.7,
-                        help='交叉率')
-    parser.add_argument('--max_generations',
-                        type=int, default=100,
-                        help='最大迭代次数')
-    parser.add_argument('--selection_top_percent',
-                        type=float, default=0.2,
-                        help='选择百分比')
-    parser.add_argument('--batch_size', type=int,
-                        default=50,
-                        help='批处理大小')
-    parser.add_argument('--seed', type=int,
-                        default=42,
-                        help='随机种子')
-    parser.add_argument('--top_n', type=int,
-                        default=1,
-                        help='返回top N结果')
-    parser.add_argument('--perplexity_weight',
-                        type=float, default=1,
-                        help='困惑度权重')
-    parser.add_argument(
-        '--attention_weights_save_path', type=str,
-        default=None, help='注意力权重保存路径')
-    parser.add_argument('--results', type=str,
-                        default=None,
-                        help='结果保存路径')
-    parser.add_argument('--history', type=str,
-                        default=None,
-                        help='历史记录保存路径')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input', type=str, required=True)
+    parser.add_argument('--output', type=str, required=True)
+    parser.add_argument('--CodonEXP_model_dir', type=str, required=True)
+    parser.add_argument('--CodonNAT_model_dir', type=str, default=None)
+    parser.add_argument('--population_size', type=int, default=100)
+    parser.add_argument('--mutation_rate', type=float, default=0.05)
+    parser.add_argument('--crossover_rate', type=float, default=0.7)
+    parser.add_argument('--max_generations', type=int, default=100)
+    parser.add_argument('--selection_top_percent', type=float, default=0.2)
+    parser.add_argument('--batch_size', type=int, default=50)
+    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--top_n', type=int, default=1)
+    parser.add_argument('--naturalness_weight'type=float, default=1)
+    parser.add_argument('--attention_weights_save_path', type=str)
+    parser.add_argument('--results', type=str, required=True)
+    parser.add_argument('--history', type=str, required=True)
     args = parser.parse_args()
 
-    # 设置随机种子
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -677,11 +634,9 @@ def main():
 
     optimized_sequences = {}
     for seq_id, cds_sequence in sequences.items():
-        print(f"正在优化序列: {seq_id}")
+        print(f"Optimizing sequence: {seq_id}")
         cds_sequence = t_to_u(cds_sequence.upper())
-
         seq_name = seq_id.split()[0]
-
         if args.attention_weights_save_path:
             seq_dir = osp.join(args.attention_weights_save_path,seq_name)
             os.makedirs(seq_dir, exist_ok=True)
@@ -701,7 +656,7 @@ def main():
             seq_history = None
 
         optimizer = GeneticOptimizer(
-            model_dir=args.model_dir,
+            CodonNAT_model_dir=args.CodonEXP_model_dir,
             population_size=args.population_size,
             mutation_rate=args.mutation_rate,
             crossover_rate=args.crossover_rate,
@@ -710,8 +665,8 @@ def main():
             weights_save_path=seq_dir,
             selection_top_percent=args.selection_top_percent,
             top_n_return=args.top_n,
-            perplexity_weight=args.perplexity_weight,
-            perplexity_model_dir=args.perplexity_model_dir
+            naturalness_weight=args.naturalness_weight,
+            CodonNAT_model_dir=args.CodonNAT_model_dir
         )
 
         if is_valid_cds(cds_sequence):
@@ -722,13 +677,13 @@ def main():
 
             if seq_results:
                 with open(seq_results, 'w') as f:
-                    f.write(f"原始CDS序列: {result['original_sequence']}\n")
-                    f.write(f"蛋白质序列: {result['protein_sequence']}\n")
-                    f.write(f"原始高表达概率: {result['original_expression']:.4f}\n")
-                    f.write(f"原始自然度: {result['original_perplexity']:.4f}\n")
+                    f.write(f"Original CDS: {result['original_sequence']}\n")
+                    f.write(f"Protein sequence: {result['protein_sequence']}\n")
+                    f.write(f"Original high-expression probability: {result['original_expression']:.4f}\n")
+                    f.write(f"Original naturalness: {result['original_perplexity']:.4f}\n")
                     original_fitness = result['original_expression'] * (result['original_perplexity'] ** optimizer.perplexity_weight)
-                    f.write(f"原始适合度: {original_fitness:.4f}\n\n")
-                    f.write(f"优化后的Top {len(result['top_sequences'])} 序列:\n\n")
+                    f.write(f"Original fitness: {original_fitness:.4f}\n\n")
+                    f.write(f"Top {len(result['top_sequences'])} CDS:\n\n")
                     for i in range(len(result['top_sequences'])):
                         seq = result['top_sequences'][i]
                         expr = result['top_expressions'][i]
@@ -746,12 +701,12 @@ def main():
                         codon_change_rate = codon_changes / (len(original_seq) // 3)
 
                         f.write(f"Top {i + 1}:\n")
-                        f.write(f"序列: {seq}\n")
-                        f.write(f"高表达概率: {expr:.4f}\n")
-                        f.write( f"自然度: {perp:.4f}\n")
-                        f.write(f"适合度: {fitness:.4f}\n")
-                        f.write(f"核苷酸变化率: {nucleotide_change_rate:.4f}\n")
-                        f.write(f"密码子变化率: {codon_change_rate:.4f}\n\n")
+                        f.write(f"CDS: {seq}\n")
+                        f.write(f"High-expression probability: {expr:.4f}\n")
+                        f.write( f"Naturalness: {perp:.4f}\n")
+                        f.write(f"Fitness: {fitness:.4f}\n")
+                        f.write(f"Nucleotide change rate: {nucleotide_change_rate:.4f}\n")
+                        f.write(f"Codon change rate: {codon_change_rate:.4f}\n\n")
 
 
     os.makedirs(os.path.dirname(args.output),exist_ok=True)
