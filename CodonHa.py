@@ -18,8 +18,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 from collections import Counter
-from model2_inference import CustomPlantRNAModel
-from mrnafm_pro_mlm_inference import CustomPlantRNAModelmlm
+from models.CodonEXP_for_inference import CustomPlantRNAModel
+from models.CodonNAT_for_inference import CustomPlantRNAModelmlm
 from utils import CustomDataset
 
 
