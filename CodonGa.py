@@ -619,7 +619,7 @@ def main():
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--top_n', type=int, default=1)
     parser.add_argument('--naturalness_weight'type=float, default=1)
-    parser.add_argument('--attention_weights_save_path', type=str)
+    parser.add_argument('--attention_weights_save_path', type=str, required = True)
     parser.add_argument('--results', type=str, required=True)
     parser.add_argument('--history', type=str, required=True)
     args = parser.parse_args()
