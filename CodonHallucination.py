@@ -125,7 +125,7 @@ def parse_codon_frequency_csv(csv_path):
     df.rename(columns=column_map, inplace=True)
     required_cols = ['amino_acid', 'codon']
     if not all(col in df.columns for col in required_cols):
-        print("错误: CSV文件必须包含 '氨基酸' 和 '密码子' 列。")
+        print("Error: The CSV file must contain 'amino acid' and 'codon' columns.")
         return None
     if 'frequency_percent' in df.columns:
         df['frequency'] = df['frequency_percent'] / 100.0
