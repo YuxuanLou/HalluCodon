@@ -12,24 +12,19 @@ import numpy as np
 import random
 import pandas as pd
 from Bio.Seq import Seq
-from transformers import AutoTokenizer, \
-    AutoConfig, default_data_collator
+from transformers import AutoTokenizer, AutoConfig, default_data_collator
 from safetensors.torch import load_file
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, \
-    Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from collections import Counter
-
-# 假设 model2.py, mrnafm_pro_mlm.py, 和 utils.py 在同一目录或可访问
 from model2_inference import CustomPlantRNAModel
 from mrnafm_pro_mlm_inference import CustomPlantRNAModelmlm
 from utils import CustomDataset
 
 
 class MLMDataCollator:
-    def __init__(self, tokenizer,
-                 mlm_probability=0.15, seed=42):
+    def __init__(self, tokenizer, mlm_probability=0.15, seed=42):
         self.tokenizer = tokenizer
         self.mlm_probability = mlm_probability
         self.mask_token_id = tokenizer.mask_token_id
@@ -123,10 +118,10 @@ def parse_codon_frequency_csv(csv_path):
     try:
         df = pd.read_csv(csv_path)
     except FileNotFoundError:
-        print(f"错误: 在路径 {csv_path} 未找到密码子频率文件")
+        print(f"Error: Codon frequency file not found at path {csv_path}")
         return None
 
-    column_map = {df.columns[0]: 'amino_acid','氨基酸': 'amino_acid', '密码子': 'codon','频率(%)': 'frequency_percent','计数': 'count'}
+    column_map = {df.columns[0]: 'amino_acid','aa': 'amino_acid', 'codon': 'codon','frequency(%)': 'frequency_percent','count': 'count'}
     df.rename(columns=column_map, inplace=True)
     required_cols = ['amino_acid', 'codon']
     if not all(col in df.columns for col in required_cols):
