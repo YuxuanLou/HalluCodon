@@ -1,4 +1,4 @@
-# HalluCodon: A Codon Optimization Tool Based on Pretrained Language Models
+# HalluCodon: a species-specific codon optimizer guided by multimodal language models and hallucination design
 
 
 
@@ -24,7 +24,7 @@
 
 ## About The Project
 
-CodonEvo, through its two major modules CodonNAT and CodonEXP, learns the codon usage preferences of endogenous proteins within the host species and the latent features of highly expressed CDS sequences. It guides the codon optimization of heterologous proteins in the host species for “high naturalness” and “high expression levels” using a genetic algorithm.
+HalluCodon is a species-specific codon optimization framework designed for plant expression systems. It integrates pre-trained protein (ESM2) and RNA (mRNA-FM) language models, applying supervised fine-tuning on species-specific datasets to generate coding sequences optimized for improved protein expression.
 
 
 
@@ -35,7 +35,8 @@ Our CUDA version is 12.2.
 1. Create a conda environment
 
    ```sh
-   conda create -n codonEvo python=3.10
+   conda create -n HalluCodon python=3.10/
+   conda activate HalluCodon
    ```
 
 3. Install dependencies
@@ -56,32 +57,30 @@ Our CUDA version is 12.2.
 1. Initialize CDS
 
    ```sh
-   python initial_cds-batch.py \
-   --model_path ./plantmodel/Ntabacum4097/Ntabacum4097-finetune-mrnafm-with-pro/Ntabacum4097-finetune-top10csi-top10csi_mlm \
-   --input_file input.fasta \
-   --output_file initial_cds.fasta
+   python CondaIni.py \
+   --model_path ./plantmodel/Ntabacum4097/Ntabacum4097-CodonNAT \
+   --input_file ./input_pro.fasta \
+   --output_file ./CodonIni.fasta
    ```
 
-   
 
 2. Optimize CDS with codonEvo
 
    ```sh
-   python naturality-aux-evo-batch.py \ 
-   --model_dir ./plantmodel/Ntabacum4097/Ntabacum4097-aux1-2-classify \
+   python CodonGa.py \
+   --CodonEXP_model_dir ./plantmodel/Ntabacum4097/Ntabacum4097-CodonEXP \
    --population_size 100 \
-   --mutation_rate 5 \
+   --mutation_rate 0.05 \
    --crossover_rate 0.7 \
    --max_generations 100 \
    --batch_size 50 \
    --selection_top_percent 0.2 \
-   --attention_weights_save_path ./Ntabacum4097/20-pro-100/attention_weights \
-   --results ./Ntabacum4097/20-pro-100/results \
-   --history ./Ntabacum4097/20-pro-100/history \
-   --perplexity_weight 1 \
-   --perplexity_model_dir ./plantmodel/Ntabacum4097/Ntabacum4097-finetune-mrnafm-with-pro/Ntabacum4097-finetune-top10csi-top10csi_mlm \
-   --input ./Ntabacum4097/cds_list.fasta \
-   --output ./Ntabacum4097/cds_codonEvo_list-100.fasta
+   --results ./Ntabacum4097/results \
+   --history ./Ntabacum4097/history \
+   --natural_weight 1 \
+   --CodonNAT_model_dir ./plantmodel/Ntabacum4097/Ntabacum4097-CodonNAT \
+   --input ./CodonIni.fasta \
+   --output ./CodonGa.fasta
    ```
 
 The model weights and detailed explanations of the parameters will be made public after the manuscript is submitted or published.
