@@ -131,7 +131,7 @@ class GradientOptimizer:
                  use_reversibility_check=True,
                  max_iterations=96,
                  min_expression_threshold=0.9,
-                 min_naturality_threshold=0.6,
+                 min_naturalness_threshold=0.6,
                  gc3_weight=1.0,
                  **kwargs):
         self.model_dir = CodonEXP_model_dir
@@ -146,7 +146,7 @@ class GradientOptimizer:
         self.use_reversibility_check = use_reversibility_check
         self.max_iterations = max_iterations
         self.min_expression_threshold = min_expression_threshold
-        self.min_naturality_threshold = min_naturality_threshold
+        self.min_naturality_threshold = min_naturalness_threshold
         self.gc3_weight = gc3_weight  
         self.cds_tokenizer = RnaTokenizer.from_pretrained("multimolecule/mrnafm")
         self.protein_tokenizer = AutoTokenizer.from_pretrained("facebook/esm2_t33_650M_UR50D")
@@ -605,7 +605,7 @@ def main():
     parser.add_argument('--naturalness_weight', type=float, default=1)
     parser.add_argument('--max_iterations', type=int, default=96)
     parser.add_argument('--min_expression_threshold', type=float, default=0.9)
-    parser.add_argument('--min_naturality_threshold', type=float, default=0.6)
+    parser.add_argument('--min_naturalness_threshold', type=float, default=0.6)
     parser.add_argument('--hallucination_naturalness_weight',type=float, default=1)
     parser.add_argument('--mutation_rate', type=float, default=0.15)
     parser.add_argument('--results_dir', type=str, required=True)
