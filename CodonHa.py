@@ -156,7 +156,7 @@ class GradientOptimizer:
                  use_reversibility_check=True,
                  max_iterations=96,
                  min_expression_threshold=0.9,
-                 min_naturality_threshold=0.6,
+                 min_naturalness_threshold=0.6,
                  codon_frequency_data=None,
                  codon_frequency_weight=1.0,
                  **kwargs):
@@ -172,7 +172,7 @@ class GradientOptimizer:
         self.use_reversibility_check = use_reversibility_check
         self.max_iterations = max_iterations
         self.min_expression_threshold = min_expression_threshold
-        self.min_naturality_threshold = min_naturality_threshold
+        self.min_naturality_threshold = min_naturalness_threshold
         self.target_dist = codon_frequency_data
         self.codon_frequency_weight = codon_frequency_weight
         self.cds_tokenizer = RnaTokenizer.from_pretrained("multimolecule/mrnafm")
@@ -678,11 +678,11 @@ def main():
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--top_n_return', type=int, default=1)
-    parser.add_argument('--perplexity_weight', type=float, default=1)
+    parser.add_argument('--naturalness_weight', type=float, default=1)
     parser.add_argument('--max_iterations', type=int, default=96)
     parser.add_argument('--min_expression_threshold', type=float, default=0.9)
-    parser.add_argument('--min_naturality_threshold', type=float, default=0.6)
-    parser.add_argument('--hallucination_perplexity_weight', type=float, default=1)
+    parser.add_argument('--min_naturalness_threshold', type=float, default=0.6)
+    parser.add_argument('--hallucination_naturalness_weight', type=float, default=1)
     parser.add_argument('--mutation_rate', type=float, default=0.15)
     parser.add_argument('--results_dir', type=str, required=True)
     parser.add_argument('--use_reversibility_check', action='store_true')
