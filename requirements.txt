@@ -11,3 +11,4 @@ regex==2024.11.6
 accelerate==1.2.1
 tokenizers==0.21.0
 scikit-learn==1.6.0
+huggingface-hub>=0.20.0
