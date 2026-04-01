@@ -36,7 +36,7 @@ HalluCodon is a species-specific codon optimization framework designed for plant
 ### 1. Create a conda environment
 
    ```sh
-   conda create -n HalluCodon python=3.10/
+   conda create -n HalluCodon python=3.10
    conda activate HalluCodon
    ```
 
