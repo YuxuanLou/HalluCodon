@@ -66,7 +66,7 @@ HalluCodon is a species-specific codon optimization framework designed for plant
 ### 1. Initialize CDS
 
    ```sh
-   python CondaIni.py \
+   python CodonIni.py \
    --model_path ./plantmodel/Ntabacum4097/Ntabacum4097-CodonNAT \
    --input_file ./input_pro.fasta \
    --output_file ./CodonIni.fasta
@@ -144,7 +144,7 @@ HalluCodon is a species-specific codon optimization framework designed for plant
    --CodonNAT_model_dir ./Ntabacum4097/Ntabacum4097-CodonNAT \
    --input ./CodonIni.fasta \
    --output ./CodonHa.fasta \
-   --codon_frequency_file ./confreq/Tobatto-codon-count.csv
+   --codon_frequency_file ./codon_freq/Tobacco-codon-count.csv
    ```
 
    **--CodonEXP_model_dir** The path where the trained species-specific CodonEXP model is stored.
