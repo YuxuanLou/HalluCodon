@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""计算每条 CDS 的 CSI（密码子稳定性指数）并筛选 top N 序列。
+"""Compute the CSI (codon stability index) of each CDS and select the top N sequences.
 
-CSI = exp( mean( log(w_codon) ) )，w_codon 为该密码子在所属氨基酸内的相对适应度
-（该氨基酸最常用密码子的频率归一化为 1）。
+CSI = exp( mean( log(w_codon) ) ), where w_codon is the relative adaptiveness of the codon
+within its amino acid (the most frequent codon of that amino acid is normalized to 1).
 
-用法:
+Usage:
   python3 calculate_csi.py --input unique.tsv --codon codon.csv \
       --output top10.csv --top-n 10
-  或按百分比: --percent 10
+  or by percentage: --percent 10
 """
 
 import argparse
@@ -15,7 +15,7 @@ import csv
 import math
 import sys
 
-MAX_CHAR_LIMIT = 131072  # 超过该长度的序列跳过
+MAX_CHAR_LIMIT = 131072  # Skip sequences longer than this
 
 
 def load_weights(codon_csv_path):
@@ -47,7 +47,7 @@ def csi_of(cds, w):
 
 
 def percentile(sorted_vals, p):
-    """与 numpy.percentile 等价的线性插值实现。"""
+    """Linear-interpolation implementation equivalent to numpy.percentile."""
     if not sorted_vals:
         return 0.0
     if len(sorted_vals) == 1:
@@ -63,9 +63,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--input", required=True, help="unique.tsv")
     ap.add_argument("--codon", required=True, help="codon.csv")
-    ap.add_argument("--output", required=True, help="输出 CSV")
-    ap.add_argument("--top-n", type=int, default=None, help="取前 N 条（默认不启用）")
-    ap.add_argument("--percent", type=float, default=10.0, help="取前百分比（默认 10%%）")
+    ap.add_argument("--output", required=True, help="Output CSV")
+    ap.add_argument("--top-n", type=int, default=None, help="Take the top N sequences (disabled by default)")
+    ap.add_argument("--percent", type=float, default=10.0, help="Take the top percentage (default 10%%)")
     args = ap.parse_args()
 
     maxInt = sys.maxsize
@@ -76,10 +76,10 @@ def main():
         except OverflowError:
             maxInt = int(maxInt / 10)
 
-    print("[calculate_csi] 加载密码子权重 ...", flush=True)
+    print("[calculate_csi] Loading codon weights ...", flush=True)
     w = load_weights(args.codon)
 
-    print("[calculate_csi] 第一遍: 计算全部 CSI ...", flush=True)
+    print("[calculate_csi] Pass 1: computing CSI for all sequences ...", flush=True)
     csi_list = []
     valid = []
     with open(args.input, newline="", encoding="utf-8") as f:
@@ -94,19 +94,19 @@ def main():
             valid.append(c)
 
     if not valid:
-        print("[calculate_csi] 错误: 没有有效序列", file=sys.stderr)
+        print("[calculate_csi] Error: no valid sequences", file=sys.stderr)
         sys.exit(1)
 
     if args.top_n is not None:
         valid_sorted = sorted(valid, reverse=True)
         threshold = valid_sorted[min(args.top_n - 1, len(valid_sorted) - 1)]
-        print(f"[calculate_csi] 取前 {args.top_n} 条, 阈值 CSI = {threshold:.6f}", flush=True)
+        print(f"[calculate_csi] Taking top {args.top_n} sequences, CSI threshold = {threshold:.6f}", flush=True)
     else:
         p = 100.0 - args.percent
-        threshold = percentile(sorted(valid), p)  # percentile 需要升序
-        print(f"[calculate_csi] 取前 {args.percent}%, 阈值 CSI = {threshold:.6f}", flush=True)
+        threshold = percentile(sorted(valid), p)  # percentile requires ascending order
+        print(f"[calculate_csi] Taking top {args.percent}%, CSI threshold = {threshold:.6f}", flush=True)
 
-    print("[calculate_csi] 第二遍: 写出命中序列 ...", flush=True)
+    print("[calculate_csi] Pass 2: writing selected sequences ...", flush=True)
     kept = 0
     with open(args.input, newline="", encoding="utf-8") as fin, open(
         args.output, "w", newline="", encoding="utf-8"
@@ -125,7 +125,7 @@ def main():
                 )
                 kept += 1
 
-    print(f"[calculate_csi] 完成: 输出 {kept} 条 -> {args.output}")
+    print(f"[calculate_csi] Done: wrote {kept} sequences -> {args.output}")
 
 
 if __name__ == "__main__":

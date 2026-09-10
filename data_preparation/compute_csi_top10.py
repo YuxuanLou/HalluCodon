@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""阶段三：计算CSI（CAI逻辑），取top 10%。
-参照频率表: codon_freq/Pinus-codon-count.csv (aa,codon,count,frequency%)，RNA/U格式
-输入: filtered_cds.csv (DNA/T)
-输出: Pinus_cds_top10_U.csv: cds_sequence,protein_sequence,csi_value (RNA/U格式)
+"""Stage 3: compute CSI (CAI logic) and take the top 10%.
+Reference frequency table: codon_freq/Pinus-codon-count.csv (aa,codon,count,frequency%), RNA/U format
+Input: filtered_cds.csv (DNA/T)
+Output: Pinus_cds_top10_U.csv: cds_sequence,protein_sequence,csi_value (RNA/U format)
 """
 import csv
 import math
@@ -13,7 +13,7 @@ DNA_TO_RNA = str.maketrans('T', 'U')
 
 
 def load_codon_table(codon_count_file):
-    """构建相对适应度表 {密码子(RNA): w}，w=count/max_count(aa)"""
+    """Build the relative adaptiveness table {codon (RNA): w}, where w = count/max_count(aa)"""
     aa_max_count = defaultdict(float)
     rows = []
     with open(codon_count_file) as f:
@@ -35,7 +35,7 @@ def load_codon_table(codon_count_file):
 
 
 def calculate_csi(cds_dna, codon_table):
-    """CAI: exp(mean(ln w))，跳过 w=0 的密码子"""
+    """CAI: exp(mean(ln w)), skipping codons with w=0"""
     total_ln_w = 0.0
     valid = 0
     for i in range(0, len(cds_dna), 3):

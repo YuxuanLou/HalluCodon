@@ -9,13 +9,13 @@ import re
 
 
 def setup_blast_db(cds_proteins, temp_dir):
-    """创建包含长度信息的BLAST数据库"""
+    """Create a BLAST database that encodes length information"""
     db_file = os.path.join(temp_dir,
                            "translated_cds.fasta")
     with open(db_file, "w") as f:
         for i, (cds, protein) in enumerate(
                 cds_proteins):
-            # 在序列ID中记录蛋白质长度信息
+            # Record the protein length in the sequence ID
             protein_length = len(protein)
             f.write(
                 f">cds_{i}_{protein_length}\n{protein}\n")
@@ -29,9 +29,9 @@ def setup_blast_db(cds_proteins, temp_dir):
 
 
 def run_blast_batch(query_items, db_file, temp_dir, num_threads):
-    """所有查询合成一个多序列FASTA,一次blastp跑完。
+    """Concatenate all queries into one multi-sequence FASTA and run a single blastp.
 
-    返回 {row_idx: (cds_idx, pident, align_length)}
+    Returns {row_idx: (cds_idx, pident, align_length)}
     """
     query_file = os.path.join(temp_dir,
                               "queries.fasta")
@@ -63,7 +63,7 @@ def run_blast_batch(query_items, db_file, temp_dir, num_threads):
                 if len(fields) < 4:
                     continue
                 qid, target_id = fields[0], fields[1]
-                # 同一查询可能有多个HSP(多行),第一行是最佳命中
+                # A query may have multiple HSPs (multiple lines); the first line is the best hit
                 if qid in results:
                     continue
                 match = re.search(r"cds_(\d+)_(\d+)",
@@ -78,21 +78,21 @@ def run_blast_batch(query_items, db_file, temp_dir, num_threads):
 
 
 def translate_cds(cds_seq):
-    """翻译CDS序列，截取到第一个终止密码子"""
-    # 查找第一个终止密码子的位置
+    """Translate a CDS sequence, truncating at the first stop codon"""
+    # Find the position of the first stop codon
     stop_codons = ['TAA', 'TAG', 'TGA']
     stop_pos = len(cds_seq)
 
     for i in range(0, len(cds_seq) - 2, 3):
         codon = cds_seq[i:i + 3]
         if codon in stop_codons:
-            stop_pos = i + 3  # 包括终止密码子
+            stop_pos = i + 3  # Include the stop codon
             break
 
-    # 截取到第一个终止密码子
+    # Truncate at the first stop codon
     truncated_cds = cds_seq[:stop_pos]
 
-    # 检查是否是3的倍数
+    # Check the length is a multiple of 3
     if len(truncated_cds) % 3 != 0:
         return None, None
 
@@ -102,42 +102,42 @@ def translate_cds(cds_seq):
                 to_stop=True))
         return truncated_cds, protein
     except Exception as e:
-        print(f"翻译错误: {e}")
+        print(f"Translation error: {e}")
         return None, None
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='批量BLAST序列匹配(单次blastp,无竞态)')
+        description='Batch BLAST sequence matching (single blastp run, no race conditions)')
     parser.add_argument('mpb_csv',
-                        help='输入CSV文件')
+                        help='Input CSV file')
     parser.add_argument('fasta_file',
-                        help='CDS FASTA文件')
+                        help='CDS FASTA file')
     parser.add_argument('output_csv',
-                        help='输出CSV文件')
+                        help='Output CSV file')
     parser.add_argument('--threshold', type=float,
                         default=80.0,
-                        help='相似性阈值(%)')
+                        help='Similarity threshold (%)')
     parser.add_argument('--coverage', type=float,
                         default=80.0,
-                        help='覆盖度阈值(%)')
+                        help='Coverage threshold (%)')
     parser.add_argument('--parallel', type=int,
                         default=4,
-                        help='blastp线程数')
+                        help='Number of blastp threads')
     parser.add_argument('--temp_dir',
-                        help='临时目录')
+                        help='Temporary directory')
     args = parser.parse_args()
 
     if args.temp_dir:
         temp_dir = args.temp_dir
     else:
-        # 默认在工作目录 ./tmp 下创建,用完即删(见文件末尾清理逻辑)
+        # Created under ./tmp in the working directory by default, deleted when done (see cleanup at the end of the file)
         local_tmp = os.path.join(os.getcwd(), "tmp")
         os.makedirs(local_tmp, exist_ok=True)
         temp_dir = tempfile.mkdtemp(prefix="blast_", dir=local_tmp)
     os.makedirs(temp_dir, exist_ok=True)
 
-    # CDS处理
+    # Process CDS
     cds_proteins = []
     for record in SeqIO.parse(args.fasta_file,
                               'fasta'):
@@ -145,21 +145,21 @@ def main():
         if truncated_cds and translated:
             cds_proteins.append(
                 (truncated_cds, translated))
-    print(f"加载CDS: {len(cds_proteins)}条")
+    print(f"Loaded CDS: {len(cds_proteins)} sequences")
 
-    # BLAST数据库
+    # BLAST database
     db_file = setup_blast_db(cds_proteins,
                              temp_dir)
-    print(f"数据库创建: {db_file}")
+    print(f"Database created: {db_file}")
 
-    # 数据处理
+    # Process data
     mpb_df = pd.read_csv(args.mpb_csv, sep=',')
     if 'seq' in mpb_df.columns and 'protein_sequence_ori' not in mpb_df.columns:
         mpb_df.rename(columns={
             'seq': 'protein_sequence_ori'},
                       inplace=True)
 
-    # 完全匹配优先
+    # Exact matches first
     translated_set = {}
     for i, (cds, translated) in enumerate(cds_proteins):
         translated_set.setdefault(translated, i)
@@ -182,7 +182,7 @@ def main():
         else:
             blast_queries.append((idx, protein_seq))
 
-    print(f"完全匹配: {len(results)}条, 进入BLAST: {len(blast_queries)}条")
+    print(f"Exact matches: {len(results)} sequences, sent to BLAST: {len(blast_queries)} sequences")
 
     if blast_queries:
         hits = run_blast_batch(blast_queries, db_file, temp_dir,
@@ -206,19 +206,19 @@ def main():
                 })
                 results[idx] = row_dict
 
-    # 结果保存(按输入顺序)
+    # Save results (in input order)
     if results:
         result_df = pd.DataFrame(
             [results[i] for i in sorted(results)])
         result_df.to_csv(args.output_csv,
                          index=False)
-        print(f"保存结果: {len(result_df)}条")
+        print(f"Results saved: {len(result_df)} sequences")
     else:
         pd.DataFrame().to_csv(args.output_csv,
                               index=False)
-        print("无符合结果")
+        print("No matching results")
 
-    # 清理
+    # Cleanup
     if not args.temp_dir:
         import shutil
         shutil.rmtree(temp_dir)

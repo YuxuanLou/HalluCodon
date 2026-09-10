@@ -227,7 +227,7 @@ def main():
         training_args = TrainingArguments(
             output_dir=fold_output_dir,
             evaluation_strategy="epoch",
-            save_strategy='no',          # 不写中间 checkpoint (避免 10G optimizer.pt)
+            save_strategy='no',          # Do not write intermediate checkpoints (avoids 10G optimizer.pt)
             save_total_limit=1,
             learning_rate=1e-5,
             per_device_train_batch_size=4,
@@ -251,7 +251,7 @@ def main():
                 if metrics is not None and 'eval_f1' in metrics and metrics['eval_f1'] > best_f1:
                     best_f1 = metrics['eval_f1']
                     trainer.save_model(model_save_path)
-                    print(f"  [save] epoch {state.epoch} f1={best_f1:.4f} 创新高, 权重已保存")
+                    print(f"  [save] epoch {state.epoch} f1={best_f1:.4f} new best, weights saved")
 
         # Initialize trainer
         trainer = Trainer(
@@ -269,7 +269,7 @@ def main():
         trainer.train()
 
         if best_f1 < 0:
-            raise RuntimeError(f"Fold {fold + 1} 训练完成但从未触发最优权重保存 (eval_f1 始终未评估?), 请检查")
+            raise RuntimeError(f"Fold {fold + 1} training finished but the best-weight save was never triggered (eval_f1 was never computed?); please check")
 
         fusion_params = model.get_learned_parameters()
         print(f"\nFold {fold + 1} Fusion Parameters:")

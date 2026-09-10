@@ -141,9 +141,9 @@ def process_protein_sequences(model,
                 predicted_cds_dna = predicted_cds.replace('U', 'T')
                 out_f.write(f">{protein_id}\n")
                 out_f.write(f"{predicted_cds_dna}\n")
-                print(f"预测的CDS序列: {predicted_cds_dna}")
-                print(f"翻译后的蛋白质: {translated_protein}")
-                print(f"与原始蛋白质匹配: {translated_protein.rstrip('*') == protein_sequence}")
+                print(f"Predicted CDS sequence: {predicted_cds_dna}")
+                print(f"Translated protein: {translated_protein}")
+                print(f"Matches original protein: {translated_protein.rstrip('*') == protein_sequence}")
 
             except Exception as e:
                 print(f"Error processing protein {protein_id}: {str(e)}")

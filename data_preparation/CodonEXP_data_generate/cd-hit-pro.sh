@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# 用法说明和参数处理
+# Usage information and argument handling
 usage() {
-    echo "用法: \$0 [-d 分隔符] 输入文件 输出文件"
-    echo "示例: "
-    echo "  TSV文件处理: \$0 -d $'\t' input.tsv output.tsv"
-    echo "  CSV文件处理: \$0 -d ',' input.csv output.csv"
+    echo "Usage: \$0 [-d delimiter] input_file output_file"
+    echo "Examples: "
+    echo "  TSV input: \$0 -d $'\t' input.tsv output.tsv"
+    echo "  CSV input: \$0 -d ',' input.csv output.csv"
     exit 1
 }
 
-# 创建临时目录和清理函数
-# 临时目录放在工作目录 ./tmp 下,用完即删
+# Create the temp directory and the cleanup function
+# Temp directory lives under ./tmp in the working directory and is deleted when done
 mkdir -p ./tmp
 TEMP_DIR=$(mktemp -d ./tmp/cdhit.XXXXXX)
 cleanup() {
@@ -18,10 +18,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 默认分隔符为逗号
+# Default delimiter is a comma
 DELIM=","
 
-# 解析命令行选项
+# Parse command-line options
 while getopts "d:" opt; do
     case $opt in
         d) DELIM=$OPTARG ;;
@@ -30,7 +30,7 @@ while getopts "d:" opt; do
 done
 shift $((OPTIND-1))
 
-# 检查剩余参数数量
+# Check the number of remaining arguments
 if [ $# -ne 2 ]; then
     usage
 fi
@@ -38,46 +38,46 @@ fi
 input_file=$1
 output_file=$2
 
-# 生成唯一的临时文件名
+# Generate unique temporary file names
 fasta_file="$TEMP_DIR/seq_$$.fasta"
 out_fasta_file="$TEMP_DIR/seq-out_$$.fasta"
 kept_lines="$TEMP_DIR/kept_lines_$$.txt"
 cdhit_log="$TEMP_DIR/cdhit_$$.log"
 
-# 检测列存在的安全方法
+# Safe method to check that the column exists
 header=$(head -1 "$input_file")
 if ! echo "$header" | tr "$DELIM" '\n' | grep -qx "protein_sequence"; then
-    echo "错误: 输入文件缺少'protein_sequence'列"
+    echo "Error: input file is missing the 'protein_sequence' column"
     exit 1
 fi
 
-# 获取列索引（兼容不同shell）
+# Get the column index (portable across shells)
 cds_col=$(echo "$header" | awk -v delim="$DELIM" 'BEGIN {FS=delim} {for(i=1;i<=NF;i++) if($i=="protein_sequence") print i}')
 #cds_col=$(echo "$header" | awk -v delim="$DELIM" 'BEGIN {FS=delim} {for(i=1;i<=NF;i++) if($i=="protein_binder") print i}')
 if [ -z "$cds_col" ]; then
-    echo "错误: 无法定位'protein_sequence'列"
+    echo "Error: cannot locate the 'protein_sequence' column"
     exit 1
 fi
 
-# 生成FASTA文件（处理包含特殊字符的字段）
+# Generate the FASTA file (handles fields containing special characters)
 awk -v delim="$DELIM" -v col="$cds_col" '
 BEGIN {FS=delim}
 NR>1 {
-    gsub(/[[:space:]]+/, "", $col)  # 清除可能存在的空格
+    gsub(/[[:space:]]+/, "", $col)  # Strip any whitespace
     printf ">%d\n%s\n", NR, $col
 }' "$input_file" > "$fasta_file"
 
-# CD-HIT聚类处理
+# CD-HIT clustering
 cd-hit -i "$fasta_file" -o "$out_fasta_file" -c 0.9 -n 5 -T 16 2>&1 | tee "$cdhit_log"
 
-# 提取保留的行号（优化性能）
+# Extract the line numbers to keep (for performance)
 grep '^>' "$out_fasta_file" | sed 's/^>//g' > "$kept_lines"
 
-# 生成最终结果文件（优化版本 - 只读取一次文件）
+# Generate the final result file (optimized - reads the input only once)
 {
-    head -1 "$input_file"  # 输出标题行
+    head -1 "$input_file"  # Write the header line
     awk 'BEGIN {
-            # 读取要保留的行号到数组中
+            # Load the line numbers to keep into an array
             while (getline line_num < "'$kept_lines'") {
                 keep[line_num] = 1
             }
@@ -87,7 +87,7 @@ grep '^>' "$out_fasta_file" | sed 's/^>//g' > "$kept_lines"
 } > "$output_file"
 
 
-echo "处理完成，结果保存在 $output_file"
-echo "保留记录数:  $(wc -l < "$kept_lines")"
-# 清理由trap自动处理，无需手动删除临时文件
+echo "Processing complete, results saved to $output_file"
+echo "Records kept:  $(wc -l < "$kept_lines")"
+# Cleanup is handled automatically by the trap; no need to delete temp files manually
 

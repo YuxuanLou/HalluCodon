@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""下载每个基因组的 CDS fasta，过滤/翻译/按蛋白去重，输出 unique.tsv。
+"""Download the CDS fasta of each genome, filter/translate/deduplicate by protein, and output unique.tsv.
 
-过滤规则（与原有 filter.py 一致）:
-  1. 长度必须为 3 的倍数
-  2. 翻译产物（标准密码子表）不能有中间终止密码子
-  3. 去掉末尾终止密码子后不能为空
-  4. 按成熟蛋白序列全局去重（MD5），保留第一条出现的 CDS
+Filtering rules (same as the original filter.py):
+  1. Length must be a multiple of 3
+  2. The translation (standard codon table) must contain no internal stop codons
+  3. Must be non-empty after stripping the terminal stop codon
+  4. Global deduplication by mature protein sequence (MD5), keeping the first CDS encountered
 
-用法:
+Usage:
   python3 fetch_and_filter.py --list species.txt --out unique.tsv \
       [--jobs 4] [--cache-dir cds_cache]
 
-species.txt 每行: 物种名 \\t FTP路径 [\\t 谱系...]
-下载地址按 NCBI 命名规则由 FTP 路径推导:
-  <ftp>/<最后一段>_cds_from_genomic.fna.gz
-下载失败（404 等）会记录到 <out>.failed。
+Each line of species.txt: species name \\t FTP path [\\t lineage...]
+The download URL is derived from the FTP path following NCBI naming conventions:
+  <ftp>/<last path segment>_cds_from_genomic.fna.gz
+Download failures (404, etc.) are recorded in <out>.failed.
 """
 
 import argparse
@@ -28,7 +28,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# 标准遗传密码（NCBI 表 1/11），按密码子 T/C/A/G 顺序展开
+# Standard genetic code (NCBI tables 1/11), expanded in codon order T/C/A/G
 BASES = "TCAG"
 AA_TABLE = "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG"
 CODON_AA = {}
@@ -54,7 +54,7 @@ def build_url(ftp):
 
 
 def download(url, dest):
-    """下载到 dest；已存在且非空则跳过。返回 True/False（404 或失败均为 False）。"""
+    """Download to dest; skip if it already exists and is non-empty. Returns True/False (404 or any failure -> False)."""
     if os.path.exists(dest) and os.path.getsize(dest) > 0:
         return True
     os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -73,7 +73,7 @@ def download(url, dest):
             return True
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                return False  # 该基因组没有 CDS 注释文件，直接跳过
+                return False  # This genome has no CDS annotation file, skip it
             last_err = f"HTTP {e.code}"
         except Exception as e:
             last_err = str(e)
@@ -82,7 +82,7 @@ def download(url, dest):
 
 
 def parse_records(path):
-    """逐条读取 gz fasta，yield (header, seq)。"""
+    """Read a gzipped fasta record by record, yielding (header, seq)."""
     header = None
     seq_lines = []
     with gzip.open(path, "rt", encoding="ascii", errors="replace") as f:
@@ -102,7 +102,7 @@ def parse_records(path):
 
 
 def process_one(species, ftp, cache_dir):
-    """下载并处理一个基因组，返回 (rows, ok, reason)。rows 为 (cds, protein) 列表。"""
+    """Download and process one genome, returning (rows, ok, reason). rows is a list of (cds, protein)."""
     url, acc = build_url(ftp)
     if cache_dir:
         gz_path = os.path.join(cache_dir, acc + "_cds_from_genomic.fna.gz")
@@ -133,7 +133,7 @@ def process_one(species, ftp, cache_dir):
 
 
 def tempfile_dir():
-    """无缓存模式下的临时目录（进程结束自动清理）。"""
+    """Temporary directory used in no-cache mode (auto-cleaned at process exit)."""
     import tempfile
 
     global _TMP_DIR
@@ -147,10 +147,10 @@ _TMP_DIR = None
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--list", required=True, help="物种列表 TSV（物种名, FTP, ...）")
-    ap.add_argument("--out", required=True, help="输出 TSV（cds_sequence, protein_sequence）")
-    ap.add_argument("--jobs", type=int, default=4, help="并发下载数（默认 4）")
-    ap.add_argument("--cache-dir", default="", help="CDS gz 缓存目录（断点续传，默认不保留）")
+    ap.add_argument("--list", required=True, help="Species list TSV (species name, FTP, ...)")
+    ap.add_argument("--out", required=True, help="Output TSV (cds_sequence, protein_sequence)")
+    ap.add_argument("--jobs", type=int, default=4, help="Number of parallel downloads (default 4)")
+    ap.add_argument("--cache-dir", default="", help="Cache directory for CDS gz files (resumable downloads; not kept by default)")
     args = ap.parse_args()
 
     items = []
@@ -164,9 +164,9 @@ def main():
                 continue
             items.append((parts[0], parts[1].strip()))
 
-    print(f"[fetch_and_filter] 待处理 {len(items)} 条记录（并发 {args.jobs}）", flush=True)
+    print(f"[fetch_and_filter] {len(items)} records to process ({args.jobs} in parallel)", flush=True)
 
-    seen = set()  # 蛋白 MD5
+    seen = set()  # Protein MD5s
     total_kept = 0
     ok_count = 0
     fail_count = 0
@@ -197,9 +197,9 @@ def main():
                 if done % 25 == 0 or done == len(items):
                     el = time.time() - t0
                     print(
-                        f"[fetch_and_filter] {done}/{len(items)} 完成, "
-                        f"成功 {ok_count}, 失败 {fail_count}, 唯一蛋白 {total_kept}, "
-                        f"用时 {el:.0f}s",
+                        f"[fetch_and_filter] {done}/{len(items)} done, "
+                        f"succeeded {ok_count}, failed {fail_count}, unique proteins {total_kept}, "
+                        f"elapsed {el:.0f}s",
                         flush=True,
                     )
 
@@ -207,15 +207,15 @@ def main():
         fail_path = args.out + ".failed"
         with open(fail_path, "w", encoding="utf-8") as f:
             f.writelines(fail_lines)
-        print(f"[fetch_and_filter] 警告: {fail_count} 条下载失败，详见 {fail_path}", flush=True)
+        print(f"[fetch_and_filter] Warning: {fail_count} downloads failed, see {fail_path}", flush=True)
 
     if ok_count == 0:
-        print("[fetch_and_filter] 错误: 所有记录都下载失败", file=sys.stderr)
+        print("[fetch_and_filter] Error: all records failed to download", file=sys.stderr)
         sys.exit(1)
 
     print(
-        f"[fetch_and_filter] 完成: 成功 {ok_count}, 失败 {fail_count}, "
-        f"唯一蛋白 {total_kept}, 用时 {time.time()-t0:.0f}s",
+        f"[fetch_and_filter] Done: succeeded {ok_count}, failed {fail_count}, "
+        f"unique proteins {total_kept}, elapsed {time.time()-t0:.0f}s",
         flush=True,
     )
 

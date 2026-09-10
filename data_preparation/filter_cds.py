@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""阶段一：解析并过滤油松CDS。
-输入: P.tabuliformis_V1.0.CDS.fa (DNA/T 格式)
-过滤: 长度%3==0、无提前终止密码子、仅含ACGT标准碱基、100<=codons<=1022、序列去重
-输出: filtered_cds.csv (ID,cds_sequence_dna,protein_sequence)
+"""Stage 1: parse and filter P. tabuliformis CDS.
+Input: P.tabuliformis_V1.0.CDS.fa (DNA/T format)
+Filters: length % 3 == 0, no premature stop codons, standard ACGT bases only, 100 <= codons <= 1022, sequence deduplication
+Output: filtered_cds.csv (ID,cds_sequence_dna,protein_sequence)
 """
 import csv
 import sys
@@ -30,7 +30,7 @@ STOP = set('TAA TAG TGA'.split())
 
 
 def translate_dna(cds):
-    """翻译DNA序列为蛋白；若内部有终止密码子返回None；末尾终止剥掉。"""
+    """Translate a DNA sequence to protein; return None if an internal stop codon is present; strip a terminal stop."""
     prot = []
     n = len(cds)
     for i in range(0, n, 3):
@@ -39,9 +39,9 @@ def translate_dna(cds):
         if aa is None:
             return None
         if aa == '*':
-            if i == n - 3:  # 末尾终止密码子，剥掉
+            if i == n - 3:  # Terminal stop codon, strip it
                 break
-            return None  # 提前终止
+            return None  # Premature stop
         prot.append(aa)
     return ''.join(prot)
 

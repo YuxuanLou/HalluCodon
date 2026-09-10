@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""把 CSV 中 cds_sequence 列的所有 T 替换为 U。
+"""Replace every T with U in the cds_sequence column of a CSV.
 
-用法: python3 t2u.py input.csv output.csv
+Usage: python3 t2u.py input.csv output.csv
 """
 
 import argparse
@@ -20,7 +20,7 @@ def main():
     ) as fout:
         reader = csv.DictReader(fin)
         if not reader.fieldnames or "cds_sequence" not in reader.fieldnames:
-            print("错误: 输入文件缺少 cds_sequence 列", file=sys.stderr)
+            print("Error: input file is missing the cds_sequence column", file=sys.stderr)
             sys.exit(1)
         writer = csv.DictWriter(fout, fieldnames=reader.fieldnames)
         writer.writeheader()
@@ -29,7 +29,7 @@ def main():
                 row["cds_sequence"] = row["cds_sequence"].replace("T", "U")
             writer.writerow(row)
 
-    print(f"[t2u] 完成: {args.input_file} -> {args.output_file}")
+    print(f"[t2u] Done: {args.input_file} -> {args.output_file}")
 
 
 if __name__ == "__main__":

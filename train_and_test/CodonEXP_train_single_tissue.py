@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""CodonEXP 单次训练（不五折）: 测试集当验证集, 每组织保留 1 个权重。
-用法: python CodonEXP_train_single_tissue.py --dataset_path test-FLOWER-0.9.csv --output_dir ../results/FLOWER
+"""Single CodonEXP run (no 5-fold CV): the test set is used as the validation set,
+keeping one set of weights per tissue.
+Usage: python CodonEXP_train_single_tissue.py --dataset_path test-FLOWER-0.9.csv --output_dir ../results/FLOWER
 """
 import os
 import torch
@@ -18,7 +19,7 @@ from utils import compute_metrics, CustomDataset, default_data_collator
 
 
 def create_optimizer(model, training_args):
-    """不冻结 ESM2: plantrna + esm2 都在 pretrained_params 组 (lr 1e-5)。"""
+    """ESM2 is not frozen: plantrna + esm2 both go into the pretrained_params group (lr 1e-5)."""
     pretrained_params = []
     custom_params = []
     pretrained_params.extend(model.plantrna.parameters())
@@ -89,7 +90,7 @@ def main():
     print("Loading data...")
     df = pd.read_csv(args.dataset_path, sep=",")
 
-    # 数据划分: 80% 训练 / 20% 测试(=验证), 不分折
+    # Data split: 80% train / 20% test (= validation), no folds
     train_data, val_data = train_test_split(
         df, test_size=0.2, random_state=42, stratify=df['label'])
     train_data = train_data.reset_index(drop=True)
@@ -124,7 +125,7 @@ def main():
     training_args = TrainingArguments(
         output_dir=fold_output_dir,
         evaluation_strategy="epoch",
-        save_strategy='no',          # 不写中间 checkpoint (避免 10G optimizer.pt)
+        save_strategy='no',          # Do not write intermediate checkpoints (avoids 10G optimizer.pt)
         save_total_limit=1,
         learning_rate=1e-5,
         per_device_train_batch_size=2,
@@ -138,7 +139,7 @@ def main():
         greater_is_better=True
     )
 
-    # 在验证集 f1 创新高时覆盖保存最优权重 (纯模型, 只留 1 份)
+    # Overwrite-save the best weights whenever validation-set f1 sets a new record (model only, keep 1 copy)
     model_save_path = os.path.join(args.output_dir, "classification-model")
     best_f1 = -1.0
 
@@ -148,7 +149,7 @@ def main():
             if metrics is not None and 'eval_f1' in metrics and metrics['eval_f1'] > best_f1:
                 best_f1 = metrics['eval_f1']
                 trainer.save_model(model_save_path)
-                print(f"  [save] epoch {state.epoch} f1={best_f1:.4f} 创新高, 权重已保存")
+                print(f"  [save] epoch {state.epoch} f1={best_f1:.4f} new best, weights saved")
 
     trainer = Trainer(
         model=model,
@@ -165,13 +166,13 @@ def main():
     trainer.train()
 
     if best_f1 < 0:
-        raise RuntimeError("训练完成但从未触发最优权重保存 (eval_f1 始终未评估?), 请检查")
+        raise RuntimeError("Training finished but the best-weight save was never triggered (eval_f1 was never computed?); please check")
 
-    # 融合参数
+    # Fusion parameters
     fusion_params = model.get_learned_parameters()
     print(f"\nFusion Parameters: alpha(RNA)={fusion_params['alpha']:.6f}, beta(Protein)={fusion_params['beta']:.6f}")
 
-    # 验证集(=测试集)评估
+    # Evaluate on the validation (= test) set
     print("Evaluating on val(=test) set...")
     eval_metrics = trainer.evaluate()
     for k, v in eval_metrics.items():

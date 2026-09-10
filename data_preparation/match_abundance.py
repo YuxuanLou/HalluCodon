@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""阶段四 step1：丰度表匹配 CDS。
-输入: 蛋白丰度排序.csv (target_id,Intensity，降序), filtered_cds.csv (ID,cds,prot)
-逻辑:
-  1) 丰度表排除 Intensity=0
-  2) CDS ID 去掉 .X 后缀 (Pt1G42640.1 -> Pt1G42640) 与丰度表 ID 匹配
-  3) 只保留匹配上的 CDS
-  4) 匹配后数据 前1/3 -> label=1, 后1/3 -> label=0, 中间丢弃
-输出: Pinus_cds_label_matched.csv: ID,cds_sequence_dna,protein_sequence,label
+"""Stage 4 step 1: match the abundance table to CDS.
+Input: protein_abundance_sorted.csv (target_id,Intensity, descending), filtered_cds.csv (ID,cds,prot)
+Logic:
+  1) Drop Intensity=0 entries from the abundance table
+  2) Strip the .X suffix from CDS IDs (Pt1G42640.1 -> Pt1G42640) and match against abundance-table IDs
+  3) Keep only matched CDS
+  4) Of the matched data: top 1/3 -> label=1, bottom 1/3 -> label=0, middle third discarded
+Output: Pinus_cds_label_matched.csv: ID,cds_sequence_dna,protein_sequence,label
 """
 import csv
 import sys
@@ -17,7 +17,7 @@ def main():
     cds_file = sys.argv[2]
     out_file = sys.argv[3]
 
-    # 1. 读取丰度表，排除 Intensity=0
+    # 1. Read the abundance table, drop Intensity=0
     abundance = []  # (target_id, intensity)
     with open(ab_file) as f:
         r = csv.DictReader(f)
@@ -25,14 +25,14 @@ def main():
             intensity = float(row['Intensity'])
             if intensity > 0:
                 abundance.append((row['target_id'].strip(), intensity))
-    # 丰度表已是降序（Intensity从大到小）
+    # The abundance table is already sorted descending (Intensity from high to low)
     print(f"abundance entries (>0): {len(abundance)}")
 
-    # 建丰度 ID 集合
+    # Build the abundance ID set
     ab_ids = {tid for tid, _ in abundance}
     ab_rank = {tid: i for i, (tid, _) in enumerate(abundance)}
 
-    # 2. 读取过滤后 CDS，按去后缀 ID 匹配
+    # 2. Read the filtered CDS and match by suffix-stripped ID
     matched = []  # (gene_id, intensity, cds, prot)
     unmatched = 0
     with open(cds_file) as f:
@@ -47,10 +47,10 @@ def main():
     print(f"CDS total: {sum(1 for _ in open(cds_file))-1}")
     print(f"matched: {len(matched)}, unmatched: {unmatched}")
 
-    # 3. 按丰度排名排序（降序丰度）
+    # 3. Sort by abundance rank (highest abundance first)
     matched.sort(key=lambda x: x[1])
 
-    # 4. 前1/3 label=1, 后1/3 label=0, 中间丢弃
+    # 4. Top 1/3 label=1, bottom 1/3 label=0, middle discarded
     n = len(matched)
     third = n // 3
     high = matched[:third]

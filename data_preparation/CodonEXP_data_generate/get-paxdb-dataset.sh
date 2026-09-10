@@ -1,19 +1,19 @@
 #!/bin/bash
-# 下载 PaxDb v5.0 数据集 txt
-# 用法:
-#   ./get-paxdb-dataset.sh <taxid> list                  # 列出该物种所有数据集
-#   ./get-paxdb-dataset.sh <taxid> <数据集名> [输出文件]   # 下载单个数据集
-# 数据集名不带 taxid 前缀, 如 FLOWER-integrated / WHOLE_ORGANISM-integrated
-# 示例:
+# Download a PaxDb v5.0 dataset txt
+# Usage:
+#   ./get-paxdb-dataset.sh <taxid> list                  # List all datasets for the species
+#   ./get-paxdb-dataset.sh <taxid> <dataset name> [output file]   # Download a single dataset
+# Dataset names have no taxid prefix, e.g. FLOWER-integrated / WHOLE_ORGANISM-integrated
+# Examples:
 #   ./get-paxdb-dataset.sh 3702 list
 #   ./get-paxdb-dataset.sh 3702 FLOWER-integrated plant-data/Athaliana3702/3702-FLOWER-integrated.txt
 set -e
 
 if [ $# -lt 2 ]; then
-    echo "用法:"
-    echo "  $0 <taxid> list                  # 列出该物种所有数据集"
-    echo "  $0 <taxid> <数据集名> [输出文件]   # 下载单个数据集"
-    echo "示例: $0 3702 FLOWER-integrated plant-data/Athaliana3702/3702-FLOWER-integrated.txt"
+    echo "Usage:"
+    echo "  $0 <taxid> list                  # List all datasets for the species"
+    echo "  $0 <taxid> <dataset name> [output file]   # Download a single dataset"
+    echo "Example: $0 3702 FLOWER-integrated plant-data/Athaliana3702/3702-FLOWER-integrated.txt"
     exit 1
 fi
 
@@ -26,15 +26,15 @@ if [ "$name" = "list" ]; then
     exit 0
 fi
 
-# 归一化: 容忍带 taxid 前缀或 .txt 后缀的输入
+# Normalize: tolerate inputs with a taxid prefix or a .txt suffix
 name=${name#${taxid}-}
 name=${name%.txt}
 
 out=${3:-${taxid}-${name}.txt}
 url="${base}/${taxid}-${name}.txt"
 
-echo "下载: $url"
+echo "Downloading: $url"
 curl -fL --retry 3 --retry-delay 5 -o "$out" "$url"
 
 n=$(grep -vc "^#" "$out" || true)
-echo "完成: $out ($n 行数据)"
+echo "Done: $out ($n data lines)"

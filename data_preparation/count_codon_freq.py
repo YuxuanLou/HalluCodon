@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""阶段二：统计全基因组密码子频率表（对齐 codon_freq/*.csv 格式）。
-输入: filtered_cds.csv (DNA/T)
-输出: Pinus_codon_count.csv: aa,codon,count,frequency(%)，RNA/U格式，含终止子*
+"""Stage 2: build a genome-wide codon frequency table (matching the codon_freq/*.csv format).
+Input: filtered_cds.csv (DNA/T)
+Output: Pinus_codon_count.csv: aa,codon,count,frequency(%), RNA/U format, including stop codons *
 """
 import csv
 import sys
@@ -41,14 +41,14 @@ def main():
             for i in range(0, len(cds), 3):
                 counter[cds[i:i + 3]] += 1
 
-    # 统计到氨基酸
+    # Aggregate counts per amino acid
     aa_codons = defaultdict(list)
     for dna_codon, count in counter.items():
         aa = DNA_CODON_TABLE.get(dna_codon, 'X')
         rna_codon = dna_codon.translate(DNA_TO_RNA)
         aa_codons[aa].append((rna_codon, count))
 
-    # 写出
+    # Write output
     rows = []
     for aa in sorted(aa_codons.keys()):
         entries = aa_codons[aa]
@@ -57,7 +57,7 @@ def main():
             freq = count / total * 100 if total else 0.0
             rows.append([aa, rna_codon, count, round(freq, 2)])
 
-    # 标准氨基酸顺序
+    # Standard amino acid order
     aa_order = 'ACDEFGHIKLMNPQRSTVWY*'
     def sort_key(r):
         return aa_order.index(r[0]) if r[0] in aa_order else 99

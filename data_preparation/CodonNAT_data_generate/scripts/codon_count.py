@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""统计 unique.tsv 中全部 CDS 的密码子使用频率。
+"""Count codon usage frequencies for all CDS in unique.tsv.
 
-用法:
+Usage:
   python3 codon_count.py --input unique.tsv --output codon.csv
 
-输出 CSV: aa, codon(RNA), count, frequency(%)（按氨基酸归一化）
+Output CSV: aa, codon(RNA), count, frequency(%) (normalized per amino acid)
 """
 
 import argparse
@@ -23,13 +23,13 @@ for _b1 in BASES:
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--input", required=True, help="unique.tsv（含 cds_sequence 列）")
-    ap.add_argument("--output", required=True, help="输出 codon.csv")
+    ap.add_argument("--input", required=True, help="unique.tsv (with a cds_sequence column)")
+    ap.add_argument("--output", required=True, help="Output codon.csv")
     args = ap.parse_args()
 
     counts = defaultdict(int)
     with open(args.input, encoding="utf-8") as f:
-        f.readline()  # 表头
+        f.readline()  # Header
         for line in f:
             line = line.rstrip("\n")
             if not line:
@@ -40,11 +40,11 @@ def main():
 
     aa_groups = defaultdict(dict)
     for codon, cnt in counts.items():
-        aa = CODON_AA.get(codon, "X")  # 未知密码子归为 X（与 codon_freq/*.csv 一致）
+        aa = CODON_AA.get(codon, "X")  # Unknown codons are grouped as X (consistent with codon_freq/*.csv)
         rna = codon.replace("T", "U")
         aa_groups[aa][rna] = cnt
 
-    # 标准氨基酸顺序（与 count_codon_freq.py 一致: ACDEFGHIKLMNPQRSTVWY*）
+    # Standard amino acid order (same as count_codon_freq.py: ACDEFGHIKLMNPQRSTVWY*)
     aa_order = "ACDEFGHIKLMNPQRSTVWY*"
     sorted_aas = sorted(aa_groups.keys(), key=lambda a: aa_order.index(a) if a in aa_order else 99)
 
@@ -53,12 +53,12 @@ def main():
         for aa in sorted_aas:
             codons = aa_groups[aa]
             total = sum(codons.values())
-            # 组内按 count 降序（与 count_codon_freq.py 一致）
+            # Sort within each group by count descending (same as count_codon_freq.py)
             for rna, cnt in sorted(codons.items(), key=lambda x: -x[1]):
                 freq = cnt / total * 100 if total else 0.0
                 f.write(f"{aa},{rna},{cnt},{freq:.2f}\n")
 
-    print(f"[codon_count] 完成: {len(counts)} 个密码子 -> {args.output}")
+    print(f"[codon_count] Done: {len(counts)} codons -> {args.output}")
 
 
 if __name__ == "__main__":

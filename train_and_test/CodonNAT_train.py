@@ -71,7 +71,7 @@ def create_optimizer(model, training_args):
         },
     ]
 
-    # 创建带参数组的优化器
+    # Create optimizer with parameter groups
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters)
     return optimizer
 
@@ -163,7 +163,7 @@ def main():
         output_dir=model_output_dir,
         overwrite_output_dir=True,
         evaluation_strategy="epoch",
-        save_strategy='no',          # 不写中间 checkpoint (避免 10G optimizer.pt)
+        save_strategy='no',          # Do not write intermediate checkpoints (avoids 10G optimizer.pt)
         save_total_limit=1,
         learning_rate=1e-4,
         per_device_train_batch_size=4,
@@ -185,7 +185,7 @@ def main():
             if metrics is not None and 'eval_mask_accuracy' in metrics and metrics['eval_mask_accuracy'] > best_acc:
                 best_acc = metrics['eval_mask_accuracy']
                 trainer.save_model(model_save_path)
-                print(f"  [save] epoch {state.epoch} mask_accuracy={best_acc:.4f} 创新高, 权重已保存")
+                print(f"  [save] epoch {state.epoch} mask_accuracy={best_acc:.4f} new best, weights saved")
 
     trainer = Trainer(
         model=model,
@@ -202,7 +202,7 @@ def main():
     trainer.train()
 
     if best_acc < 0:
-        raise RuntimeError("训练完成但从未触发最优权重保存 (eval_mask_accuracy 始终未评估?), 请检查")
+        raise RuntimeError("Training finished but the best-weight save was never triggered (eval_mask_accuracy was never computed?); please check")
 
 
 

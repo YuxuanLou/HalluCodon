@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""从 assembly_summary_genbank.txt 中按谱系筛选指定分类下的物种。
+"""Select species of a given taxon from assembly_summary_genbank.txt by lineage.
 
-输出 TSV（每行）: 物种名 \\t FTP路径 \\t 完整谱系（tab 分隔）
+Output TSV (per line): species name \\t FTP path \\t full lineage (tab separated)
 
-用法:
+Usage:
   python3 select_species.py --assembly-summary FILE --taxonomy-dir DIR \
       --taxon Enterobacteriaceae --out species.txt [--all-genomes]
 
-默认每个物种只保留一个代表基因组（优先 RefSeq(GCF)，再优先完整基因组）；
-加 --all-genomes 则保留该分类下的所有基因组记录。
+By default only one representative genome is kept per species (preferring RefSeq(GCF), then complete genomes);
+with --all-genomes, all genome records under the taxon are kept.
 """
 
 import argparse
@@ -17,7 +17,7 @@ import time
 
 
 def load_names(path):
-    """names.dmp -> {taxid: 学名}，优先 scientific name。"""
+    """names.dmp -> {taxid: scientific name}, preferring "scientific name"."""
     name_of = {}
     seen_class = {}
     with open(path, encoding="utf-8", errors="replace") as f:
@@ -36,7 +36,7 @@ def load_names(path):
 
 
 def load_nodes(path):
-    """nodes.dmp -> (parent, rank)。"""
+    """nodes.dmp -> (parent, rank)."""
     parent = {}
     rank = {}
     with open(path, encoding="utf-8", errors="replace") as f:
@@ -52,7 +52,7 @@ def load_nodes(path):
 
 
 def lineage_names(taxid, parent, names):
-    """从指定 taxid 向上走到根，返回各级学名（含自身）。"""
+    """Walk up from the given taxid to the root, returning scientific names at each level (including itself)."""
     out = []
     seen = set()
     cur = taxid
@@ -78,20 +78,20 @@ LEVEL_PRIORITY = {
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--assembly-summary", required=True, help="assembly_summary_genbank.txt")
-    ap.add_argument("--taxonomy-dir", required=True, help="含 nodes.dmp 和 names.dmp 的目录")
-    ap.add_argument("--taxon", required=True, help="目标分类名，如 Enterobacteriaceae")
-    ap.add_argument("--out", required=True, help="输出 TSV")
-    ap.add_argument("--all-genomes", action="store_true", help="保留所有基因组而不是每物种一条")
+    ap.add_argument("--taxonomy-dir", required=True, help="Directory containing nodes.dmp and names.dmp")
+    ap.add_argument("--taxon", required=True, help="Target taxon name, e.g. Enterobacteriaceae")
+    ap.add_argument("--out", required=True, help="Output TSV")
+    ap.add_argument("--all-genomes", action="store_true", help="Keep all genomes instead of one per species")
     args = ap.parse_args()
 
     t0 = time.time()
     target = args.taxon.strip().lower()
-    print(f"[select_species] 加载 taxonomy ...", flush=True)
+    print(f"[select_species] Loading taxonomy ...", flush=True)
     names = load_names(f"{args.taxonomy_dir}/names.dmp")
     parent, rank = load_nodes(f"{args.taxonomy_dir}/nodes.dmp")
-    print(f"[select_species] taxonomy 加载完成（{time.time()-t0:.1f}s）", flush=True)
+    print(f"[select_species] Taxonomy loaded ({time.time()-t0:.1f}s)", flush=True)
 
-    # 逐行扫描 assembly summary
+    # Scan the assembly summary line by line
     candidates = []          # (idx, species_taxid, species, ftp, lineage)
     lineage_cache = {}
     n_rows = 0
@@ -119,15 +119,15 @@ def main():
                 (n_rows, species_taxid, species, ftp, lg, cols)
             )
             if n_rows % 500000 == 0:
-                print(f"[select_species] 已扫描 {n_rows} 行, 命中 {len(candidates)}", flush=True)
+                print(f"[select_species] Scanned {n_rows} rows, {len(candidates)} matches", flush=True)
 
-    print(f"[select_species] 扫描完成: {n_rows} 行, 命中 {len(candidates)} 条记录", flush=True)
+    print(f"[select_species] Scan complete: {n_rows} rows, {len(candidates)} matching records", flush=True)
     if not candidates:
-        print(f"[select_species] 错误: 分类 [{args.taxon}] 没有匹配到任何物种", file=sys.stderr)
+        print(f"[select_species] Error: no species matched taxon [{args.taxon}]", file=sys.stderr)
         sys.exit(1)
 
     if not args.all_genomes:
-        # 每个物种保留一条: 优先 GCF(RefSeq) > 完整基因组 > reference/representative > 文件顺序
+        # Keep one record per species: prefer GCF(RefSeq) > complete genome > reference/representative > file order
         best = {}
         for cand in candidates:
             idx, sp_taxid, species, ftp, lg, cols = cand
@@ -140,7 +140,7 @@ def main():
             if old is None or key < old[0]:
                 best[sp_taxid] = (key, cand)
         selected = [c[1] for c in best.values()]
-        print(f"[select_species] 每物种取代表后: {len(selected)} 个物种", flush=True)
+        print(f"[select_species] After keeping one representative per species: {len(selected)} species", flush=True)
     else:
         selected = candidates
 
@@ -148,7 +148,7 @@ def main():
         for idx, sp_taxid, species, ftp, lg, cols in selected:
             f.write(species + "\t" + ftp + "\t" + "\t".join(lg) + "\n")
 
-    print(f"[select_species] 输出: {args.out}（{len(selected)} 行）", flush=True)
+    print(f"[select_species] Output: {args.out} ({len(selected)} lines)", flush=True)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""阶段四 step3：从 cd-hit 输出生成最终 CodonEXP 训练CSV。
-输入: Pinus_cds_label_matched.csv (ID,cds_sequence_dna,protein_sequence,label)
-      matched_prot_cdhit.fasta.clstr (cd-hit聚类结果)
-逻辑: 每个簇的代表序列(带*的) 保留其 label；同簇内其他序列丢弃。
-输出: Pinus_cds_label.csv: ID,cds_sequence,protein_sequence,label (DNA/T格式)
+"""Stage 4 step 3: generate the final CodonEXP training CSV from cd-hit output.
+Input: Pinus_cds_label_matched.csv (ID,cds_sequence_dna,protein_sequence,label)
+      matched_prot_cdhit.fasta.clstr (cd-hit clustering results)
+Logic: keep the label of each cluster representative (marked with *); discard the other sequences in the same cluster.
+Output: Pinus_cds_label.csv: ID,cds_sequence,protein_sequence,label (DNA/T format)
 """
 import csv
 import re
@@ -11,7 +11,7 @@ import sys
 
 
 def parse_clstr(clstr_file):
-    """解析 clstr 文件，返回每个代表序列的 seqN 编号（带*）。"""
+    """Parse the clstr file and return the seqN index of each representative sequence (marked with *)."""
     reps = []
     with open(clstr_file) as f:
         for line in f:
@@ -19,7 +19,7 @@ def parse_clstr(clstr_file):
             if line.startswith('>Cluster'):
                 continue
             if line.rstrip().endswith('*'):
-                # 形如 0	1021aa, >seq3181|PtXG09320|l... *
+                # e.g. 0	1021aa, >seq3181|PtXG09320|l... *
                 m = re.search(r'>seq(\d+)\|', line)
                 if m:
                     reps.append(int(m.group(1)))
@@ -34,7 +34,7 @@ def main():
     reps = parse_clstr(clstr_file)
     print(f"representatives from cd-hit: {len(reps)}")
 
-    # 从 matched 表读回完整记录，按 seqN 索引
+    # Read full records back from the matched table, indexed by seqN
     by_seq = {}
     with open(matched_csv) as f:
         r = csv.DictReader(f)
@@ -42,13 +42,13 @@ def main():
             by_seq[i] = row
     print(f"matched rows: {len(by_seq)}")
 
-    # 组装输出
+    # Assemble output
     out_rows = []
     for seqn in reps:
         rec = by_seq[seqn]
         out_rows.append([rec['ID'], rec['cds_sequence_dna'], rec['protein_sequence'], rec['label']])
 
-    # 按 ID 排序保持稳定
+    # Sort by ID for stability
     out_rows.sort(key=lambda x: x[0])
 
     with open(out_csv, 'w', newline='') as f:

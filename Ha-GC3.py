@@ -534,7 +534,7 @@ class GradientOptimizer:
                 log_df = log_df.sort_values(by=['iteration', 'fitness'], ascending=[True, False])
                 csv_path = os.path.join(results_dir, "optimization_log.csv")
                 log_df.to_csv(csv_path, index=False, encoding='utf-8')
-                print(f"优化过程日志已更新至: {csv_path}")
+                print(f"Optimization log updated: {csv_path}")
 
 
             current_best_sequence = max(evaluated_data, key=lambda k: evaluated_data[k]['fitness'])
