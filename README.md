@@ -224,16 +224,23 @@ the worked example, and keep all intermediate files under `./tmp/`.
 
 ### Step 1 · CodonNAT: collect data and train
 
-**1a. High-CSI CDS training set.** The one-command pipeline downloads the taxon's
+**1a. Download the NCBI assembly summary** (resumable; skipped automatically if
+it already exists — `02_build_top10_U.sh` can also fetch it on demand):
+
+```sh
+cd data_preparation/CodonNAT_data_generate
+./01_download_assembly_summary.sh ../../../tmp/assembly_summary_genbank.txt
+```
+
+**1b. High-CSI CDS training set.** The one-command pipeline downloads the taxon's
 reference CDS from NCBI, keeps complete ORFs, de-duplicates by translated protein,
 builds a genome-wide codon-frequency table, ranks CDS by codon stability index
 (CSI) against that table, and keeps the top 10% (converted to RNA alphabet):
 
 ```sh
-cd data_preparation/CodonNAT_data_generate
-./02_build_top10_U.sh Escherichia -o ../../../tmp
+./02_build_top10_U.sh Escherichia -o ../../../tmp \
+    -a ../../../tmp/assembly_summary_genbank.txt
 cd ../../..
-# NCBI assembly summary + taxonomy dump are fetched automatically on first run
 # output: tmp/top10_U.csv  (columns: cds_sequence, protein_sequence, csi_value)
 ```
 
@@ -253,7 +260,7 @@ python get_high_csi-seq.py --input tmp/ecoli_filtered.csv \
 
 Keep `codon_freq/Ecoli-codon-count.csv` — CodonHa uses it at optimization time.
 
-**1b. Train CodonNAT** (masked-codon self-supervised fine-tuning):
+**1c. Train CodonNAT** (masked-codon self-supervised fine-tuning):
 
 ```sh
 python train_and_test/CodonNAT_train.py \
@@ -264,14 +271,11 @@ python train_and_test/CodonNAT_train.py \
 # best epoch kept by validation mask accuracy; weights only, no optimizer checkpoints
 ```
 
-| Component | Setting |
-|---|---|
-| CDS encoder | mRNA-FM (`multimolecule/mrnafm`, codon tokens) — pretrained, fine-tuned at lr 1e-4 |
-| Protein encoder | ESM2-650M (`facebook/esm2_t33_650M_UR50D`) — pretrained, fine-tuned at lr 1e-4 |
-| Task / loss | masked codon prediction (MLM); cross-entropy on masked codons |
-| Optimizer | AdamW, lr 1e-4, weight decay 0.01 |
-| Split | 80/10/10 train/val/test (`random_state=42`) |
-| Batch / length / epochs | 4 per device · 1024 tokens · up to 50 (early stopping patience 5) |
+Both encoders start from pretrained weights (mRNA-FM for the CDS, ESM2-650M for
+the protein) and are fine-tuned together at lr 1e-4 with AdamW (weight decay 0.01).
+Training masks random codons and minimizes cross-entropy on the masked positions,
+on an 80/10/10 train/val/test split (`random_state=42`), batch size 4, max length
+1024, up to 50 epochs with early stopping (patience 5).
 
 ### Step 2 · CodonEXP: collect data and train
 
@@ -310,15 +314,15 @@ python train_and_test/CodonEXP_train_and_test.py \
 # per-fold and ensemble metrics on the held-out 20% test set are printed and saved
 ```
 
-| Component | Setting |
-|---|---|
-| Split | 80/20 stratified (`random_state=42`), then `KFold(5, shuffle, random_state=100)` on the 80% |
-| Encoders | mRNA-FM + ESM2-650M — pretrained, fine-tuned at lr 1e-5 |
-| Fusion | learnable softmax weights (RNA vs protein), reported per fold |
-| Head / loss | AttentionPooling → MLP → 1 logit; `BCEWithLogitsLoss` plus equal-weight auxiliary loss |
-| Optimizer | AdamW; custom head at lr 1e-3 / weight decay 0.01 |
-| Batch / length / epochs | 4 (eval 16) per device · 1024 tokens · 20 |
-| Selection | best epoch per fold by validation f1; weights saved without optimizer state |
+The data are split 80/20 with stratification (`random_state=42`), and the 80% is
+further divided into 5 cross-validation folds (`random_state=100`). Both encoders
+(mRNA-FM for the CDS, ESM2-650M for the protein) start from pretrained weights and
+are fine-tuned at lr 1e-5, while the custom head (attention pooling plus an MLP
+with a single logit) trains at lr 1e-3. The loss is `BCEWithLogitsLoss` plus an
+equal-weight auxiliary loss on the CDS branch; the RNA/protein fusion weights are
+learned and reported per fold. Each fold runs for 20 epochs (batch 4, eval 16, max
+length 1024), and the best epoch is chosen by validation f1 — saved as weights
+only, without optimizer state.
 
 To keep one single model instead of five folds (e.g. one model per tissue or
 condition), use `train_and_test/CodonEXP_train_single_tissue.py` with the same
