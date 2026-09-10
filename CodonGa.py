@@ -19,8 +19,8 @@ import time
 import gc
 
 
-from CodonEXP_for_inference import CustomPlantRNAModel
-from CodonNAT_for_inference import CustomPlantRNAModelmlm
+from models.CodonEXP_for_inference import CustomPlantRNAModel
+from models.CodonNAT_for_inference import CustomPlantRNAModelmlm
 from utils import CustomDataset
 
 
@@ -153,12 +153,12 @@ class GeneticOptimizer:
     def __init__(self,
                  CodonEXP_model_dir,
                  CodonNAT_model_dir,
+                 weights_save_path,
                  population_size=50,
                  mutation_rate=5,
                  crossover_rate=0.7,
                  max_generations=100,
                  batch_size=50,
-                 weights_save_path,
                  selection_top_percent=0.2,
                  top_n_return=5,
                  naturalness_weight=1):
@@ -618,7 +618,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=50)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--top_n', type=int, default=1)
-    parser.add_argument('--naturalness_weight'type=float, default=1)
+    parser.add_argument('--naturalness_weight', type=float, default=1)
     parser.add_argument('--attention_weights_save_path', type=str, default = './attention_weights')
     parser.add_argument('--results', type=str, required=True)
     parser.add_argument('--history', type=str, required=True)
@@ -656,17 +656,17 @@ def main():
             seq_history = None
 
         optimizer = GeneticOptimizer(
-            CodonNAT_model_dir=args.CodonEXP_model_dir,
+            CodonEXP_model_dir=args.CodonEXP_model_dir,
+            CodonNAT_model_dir=args.CodonNAT_model_dir,
+            weights_save_path=seq_dir,
             population_size=args.population_size,
             mutation_rate=args.mutation_rate,
             crossover_rate=args.crossover_rate,
             max_generations=args.max_generations,
             batch_size=args.batch_size,
-            weights_save_path=seq_dir,
             selection_top_percent=args.selection_top_percent,
             top_n_return=args.top_n,
             naturalness_weight=args.naturalness_weight,
-            CodonNAT_model_dir=args.CodonNAT_model_dir
         )
 
         if is_valid_cds(cds_sequence):

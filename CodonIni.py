@@ -122,7 +122,7 @@ def process_protein_sequences(model,
                               device):
     with open(output_file, 'w') as out_f:
         for record in SeqIO.parse(input_file,"fasta"):
-            protein_id = record.id
+            protein_id = record.description
             protein_sequence = str(record.seq).upper().replace(' ','').replace('\n', '').replace('\r', '')
             if len(protein_sequence) > 1022:
                 print(f"Warning: Protein sequence {protein_id} length ({len(protein_sequence)}) exceeds the maximum limit (1022), skipping")
@@ -138,9 +138,10 @@ def process_protein_sequences(model,
                     protein_sequence=protein_sequence,
                     device=device
                 )
+                predicted_cds_dna = predicted_cds.replace('U', 'T')
                 out_f.write(f">{protein_id}\n")
-                out_f.write(f"{predicted_cds}\n")
-                print(f"预测的CDS序列: {predicted_cds}")
+                out_f.write(f"{predicted_cds_dna}\n")
+                print(f"预测的CDS序列: {predicted_cds_dna}")
                 print(f"翻译后的蛋白质: {translated_protein}")
                 print(f"与原始蛋白质匹配: {translated_protein.rstrip('*') == protein_sequence}")
 

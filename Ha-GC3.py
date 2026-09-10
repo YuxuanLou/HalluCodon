@@ -696,7 +696,7 @@ def main():
                 else:
                     f.write(
                         f">{seq_id} naturalness={naturality:.4f} expression={expression:.4f} fitness={fitness:.4f}\n")
-                f.write(f"{sequence}\n")
+                f.write(f"{sequence.replace('U', 'T')}\n")
 
     print(f"\nAll sequences processed. Optimized FASTA file saved to: {args.output}")
 

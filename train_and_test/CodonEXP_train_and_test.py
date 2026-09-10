@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split, KFold
 from datasets import Dataset
 from transformers import AutoTokenizer, Trainer, TrainingArguments, AutoConfig
 from sklearn.metrics import accuracy_score,  precision_score, recall_score, f1_score, matthews_corrcoef, roc_auc_score, confusion_matrix
-from transformers import EarlyStoppingCallback
+from transformers import EarlyStoppingCallback, TrainerCallback
 import numpy as np
 from scipy.special import softmax
 import argparse
@@ -48,6 +48,7 @@ def main():
     # Add argument parser for output directory
     parser = argparse.ArgumentParser()
     parser.add_argument('--output_dir', type=str, required = True)
+    parser.add_argument('--dataset_path', type=str, default='./cds_label-0.9.csv')
     args = parser.parse_args()
 
     if not os.path.exists(args.output_dir):
@@ -58,7 +59,7 @@ def main():
         os.makedirs(logs_dir)
 
     print("Loading data...")
-    df = pd.read_csv('./xiaomai/wheat-data-checked.tsv',sep=",")
+    df = pd.read_csv(args.dataset_path,sep=",")
 
     train_data, test_data = train_test_split(df,test_size=0.2,random_state=42,stratify=df['label'])
 
@@ -226,20 +227,31 @@ def main():
         training_args = TrainingArguments(
             output_dir=fold_output_dir,
             evaluation_strategy="epoch",
-            save_strategy='epoch',
+            save_strategy='no',          # 不写中间 checkpoint (避免 10G optimizer.pt)
             save_total_limit=1,
             learning_rate=1e-5,
-            per_device_train_batch_size=2,
-            per_device_eval_batch_size=2,
+            per_device_train_batch_size=4,
+            per_device_eval_batch_size=16,
             num_train_epochs=20,
             weight_decay=0,
             logging_dir=logs_dir,
             logging_steps=100,
-            load_best_model_at_end=True,
+            load_best_model_at_end=False,
             metric_for_best_model="f1",
             greater_is_better=True
 
         )
+
+        model_save_path = os.path.join(args.output_dir,f"classification-model-fold-{fold + 1}")
+        best_f1 = -1.0
+
+        class SaveBestCallback(TrainerCallback):
+            def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+                nonlocal best_f1
+                if metrics is not None and 'eval_f1' in metrics and metrics['eval_f1'] > best_f1:
+                    best_f1 = metrics['eval_f1']
+                    trainer.save_model(model_save_path)
+                    print(f"  [save] epoch {state.epoch} f1={best_f1:.4f} 创新高, 权重已保存")
 
         # Initialize trainer
         trainer = Trainer(
@@ -249,15 +261,15 @@ def main():
             eval_dataset=val_dataset,
             compute_metrics=compute_metrics,
             data_collator=default_data_collator,
-            callbacks=[EarlyStoppingCallback(early_stopping_patience=20)],
+            callbacks=[EarlyStoppingCallback(early_stopping_patience=20), SaveBestCallback()],
             optimizers = (create_optimizer(model, training_args),None)
         )
 
         print(f"Starting training for fold {fold + 1}...")
         trainer.train()
 
-        model_save_path = os.path.join(args.output_dir,f"classification-model-fold-{fold + 1}")
-        trainer.save_model(model_save_path)
+        if best_f1 < 0:
+            raise RuntimeError(f"Fold {fold + 1} 训练完成但从未触发最优权重保存 (eval_f1 始终未评估?), 请检查")
 
         fusion_params = model.get_learned_parameters()
         print(f"\nFold {fold + 1} Fusion Parameters:")
@@ -349,8 +361,9 @@ def main():
         short_mcc = matthews_corrcoef(short_true_labels,short_ensemble_preds)
         short_auc = roc_auc_score(short_true_labels,short_ensemble_probs)
         cm_short = confusion_matrix(short_true_labels,short_ensemble_preds)
+        id_col = 'id' if 'id' in short_test_data.columns else 'ID'
         short_results_df = pd.DataFrame({
-            'id': short_test_data['id'].values,
+            'id': short_test_data[id_col].values,
             'cds_length': short_test_data[
                 'cds_length'].values,
             'true_label': short_true_labels,
@@ -370,8 +383,9 @@ def main():
             'short_auc': short_auc
         })
     # Save test results
+    id_col = 'id' if 'id' in test_data.columns else 'ID'
     results_df = pd.DataFrame({
-        'id': test_data['id'].values,
+        'id': test_data[id_col].values,
         'true_label': true_labels,
         'ensemble_probability': ensemble_probs,
         'ensemble_prediction': ensemble_preds

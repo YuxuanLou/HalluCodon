@@ -13,6 +13,13 @@
     <li>
       <a href="#Installation">Installation</a>
     </li>
+    <li><a href="#data-collection">Data Collection</a></li>
+    <li><a href="#training">Training</a>
+      <ul>
+        <li><a href="#how-to-train-codonnat">How to train CodonNAT</a></li>
+        <li><a href="#how-to-train-codonexp">How to train CodonEXP</a></li>
+      </ul>
+    </li>
     <li><a href="#usage">Usage</a></li>
   </ol>
 </details>
@@ -57,6 +64,151 @@ HalluCodon is a species-specific codon optimization framework designed for plant
 
 
 
+
+<!-- DATA COLLECTION -->
+
+## Data Collection
+
+Both models are species-specific and must be fine-tuned on target-species data
+before they can be used by the optimizers. Two datasets are needed:
+
+* **CodonNAT** (naturalness encoder) — natural coding sequences of the species.
+* **CodonEXP** (expression classifier) — CDS paired with measured protein abundance,
+  binarized into high / low expressors.
+
+### CodonNAT training data (high-CSI CDS)
+
+Goal: a CSV of the species' most naturally-optimized CDS (top 10% by Codon
+Stability Index, CSI), in **RNA alphabet (U)**.
+
+```
+cds_sequence,protein_sequence,csi_value
+AUGAAACGC...,MKRISTTT...,0.31
+```
+
+The one-command pipeline downloads a taxon's reference CDS from NCBI, translates
+and de-duplicates by protein, builds a genome-wide codon-frequency table, ranks CDS
+by CSI against that table, keeps the top percentage, and converts T→U:
+
+```sh
+cd data_preparation/CodonNAT_data_generate
+./02_build_top10_U.sh Escherichia            # taxon name (e.g. a genus or family)
+# output:  output/top10_U.csv   (cds_sequence,protein_sequence,csi_value)
+# options: -p <percent>  -j <jobs>  -a <assembly_summary.txt>  -o <outdir>
+```
+
+Dependencies: `python3` + `pandas`/`biopython`, `blastn`/`makeblastdb` (for protein
+de-duplication), `cd-hit`. NCBI `assembly_summary_genbank.txt` and the taxonomy dump
+(`nodes.dmp`/`names.dmp`) are downloaded automatically on first run.
+
+Step-by-step scripts (for a local genome FASTA instead of NCBI download):
+
+| Script | Role |
+|---|---|
+| `data_preparation/filter_cds.py` | keep complete CDS (ATG…stop, length % 3 == 0) |
+| `data_preparation/count_codon_freq.py` | genome-wide `aa,codon,count,frequency(%)` table |
+| `get_high_csi-seq.py` | rank CDS by CSI vs that table, keep top 10% |
+
+### CodonEXP training data (expression-labeled CDS)
+
+Goal: a CSV of CDS labeled high(1) / low(0) by measured abundance, protein
+de-duplicated at 90% identity:
+
+```
+id,abundance,protein_sequence_ori,uniprot_id,exp,label,cds_sequence,protein_sequence,similarity,coverage
+```
+
+PaxDb protein-abundance datasets are matched back to the species CDS by BLASTP and
+de-duplicated with cd-hit. The workflow is documented in
+[`data_preparation/CodonEXP_data_generate/README.md`](data_preparation/CodonEXP_data_generate/README.md).
+
+```sh
+cd data_preparation/CodonEXP_data_generate
+# 1) species proteins  (taxid 3702 = Arabidopsis thaliana)
+./get-paxdb-proteins.sh 3702 fasta.v11.5.3702.fa
+# 2) pick a dataset (list, then download one)
+./get-paxdb-dataset.sh 3702 FLOWER-integrated 3702-FLOWER-integrated.txt
+# 3) abundance -> high/low + CDS matching + 0.9 de-duplication
+python3 paxdb-codonexp.py \
+    --cds Athaliana.TAIR10.cds.all.fa \
+    --dataset 3702-FLOWER-integrated.txt \
+    --proteins fasta.v11.5.3702.fa \
+    --out 3702-FLOWER-0.9.csv \
+    --threshold 90 --coverage 50 --parallel 8
+```
+
+The abundance ranking marks the **top 1/3 as `high` (label=1)** and the
+**bottom 1/3 as `low` (label=0)**, dropping the middle third; proteins are then
+de-duplicated with `cd-hit -c 0.9 -n 5`. Dependencies: `pandas`, `biopython`,
+`blastp`, `makeblastdb`, `cd-hit`.
+
+<!-- TRAINING -->
+
+## Training
+
+### How to train CodonNAT
+
+CodonNAT is a self-supervised masked-codon language model. It is fine-tuned on the
+species' high-CSI CDS so the downstream optimizers (CodonIni / CodonGa / CodonHa)
+can score codon naturalness for that species.
+
+```sh
+python train_and_test/CodonNAT_train.py \
+    --output_dir ./Ntabacum4097 \
+    --dataset_path ./Ntabacum4097_top10.csv \
+    --model_name Ntabacum4097-CodonNAT
+```
+
+| Argument | Meaning |
+|---|---|
+| `--output_dir` | directory for logs and the trained model |
+| `--dataset_path` | high-CSI CDS CSV (`cds_sequence,protein_sequence`); split 80/10/10 train/val/test, `random_state=42` |
+| `--model_name` | saved as `{output_dir}/{dataset_name}-{model_name}/` |
+
+| Component | Setting |
+|---|---|
+| CDS encoder | mRNA-FM (`multimolecule/mrnafm`, codon tokens) — pretrained, fine-tuned at lr 1e-4 |
+| Protein encoder | ESM2-650M (`facebook/esm2_t33_650M_UR50D`) — pretrained, fine-tuned at lr 1e-4 |
+| Task | masked codon prediction (MLM), codon level |
+| Loss | cross-entropy on masked codons |
+| Optimizer | AdamW, lr 1e-4, weight decay 0.01 (both parameter groups) |
+| Batch / length / epochs | 4 per device · 1024 tokens · 50 (early stop patience 5) |
+| Best-model selection | `eval_mask_accuracy` (final weights saved as `model.safetensors`, no optimizer state) |
+
+### How to train CodonEXP
+
+CodonEXP is the high/low expression classifier: an ESM2 branch and an mRNA-FM
+branch (both initialized from pretrained weights and fine-tuned at a low learning
+rate), fused with learned weights and read out by an MLP with a binary (BCE) head.
+It is trained with **5-fold cross-validation**, and the five fold models are later
+averaged (ensemble) for inference.
+
+```sh
+python train_and_test/CodonEXP_train_and_test.py \
+    --output_dir ./Ntabacum4097-CodonEXP \
+    --dataset_path ./Ntabacum4097-0.9.csv
+```
+
+| Argument | Meaning |
+|---|---|
+| `--output_dir` | directory for logs and the five fold models |
+| `--dataset_path` | expression-labeled CSV (`cds_sequence,protein_sequence,label`) |
+
+| Component | Setting |
+|---|---|
+| Data split | 80/20 train/test (`test_size=0.2, random_state=42, stratify=label`), then 5-fold CV on the 80% (`KFold(5, shuffle, random_state=100)`) |
+| CDS encoder | mRNA-FM — pretrained, fine-tuned at lr 1e-5 |
+| Protein encoder | ESM2-650M — pretrained, fine-tuned at lr 1e-5 (same low-lr group) |
+| Fusion | learnable softmax weights (RNA vs protein) reported per fold |
+| Head | AttentionPooling → MLP → 1 logit, `BCEWithLogitsLoss` |
+| Loss | main loss + equal-weight auxiliary loss on the CDS branch |
+| Batch / length / epochs | 4 (eval 16) per device · 1024 tokens · 20 |
+| Best-model selection | validation `f1` (saved as `classification-model-fold-{1..5}`) |
+
+The script also reports an ensemble (average probability over the five folds) on
+the held-out 20% test set. For tissue-specific or single-model training without CV,
+use `train_and_test/CodonEXP_train_single_tissue.py` (same flags; keeps one
+`classification-model/`).
 
 <!-- USAGE EXAMPLES -->
 

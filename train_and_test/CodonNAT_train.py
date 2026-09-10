@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from datasets import Dataset
 from transformers import AutoTokenizer, Trainer, TrainingArguments, AutoConfig
-from transformers import EarlyStoppingCallback
+from transformers import EarlyStoppingCallback, TrainerCallback
 import numpy as np
 import argparse
 from collections import defaultdict
@@ -163,17 +163,29 @@ def main():
         output_dir=model_output_dir,
         overwrite_output_dir=True,
         evaluation_strategy="epoch",
-        save_strategy='epoch',
+        save_strategy='no',          # 不写中间 checkpoint (避免 10G optimizer.pt)
         save_total_limit=1,
         learning_rate=1e-4,
-        per_device_train_batch_size=2,
-        per_device_eval_batch_size=2,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
         num_train_epochs=50,
         weight_decay=0.01,
-        load_best_model_at_end=True,
+        load_best_model_at_end=False,
         metric_for_best_model="eval_mask_accuracy",
         greater_is_better=True
     )
+
+    dataset_name = os.path.splitext(os.path.basename(args.dataset_path))[0]
+    model_save_path = os.path.join(args.output_dir, f"{dataset_name}-{args.model_name}")
+    best_acc = -1.0
+
+    class SaveBestCallback(TrainerCallback):
+        def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+            nonlocal best_acc
+            if metrics is not None and 'eval_mask_accuracy' in metrics and metrics['eval_mask_accuracy'] > best_acc:
+                best_acc = metrics['eval_mask_accuracy']
+                trainer.save_model(model_save_path)
+                print(f"  [save] epoch {state.epoch} mask_accuracy={best_acc:.4f} 创新高, 权重已保存")
 
     trainer = Trainer(
         model=model,
@@ -181,7 +193,7 @@ def main():
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
         data_collator=data_collator,
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=5), SaveBestCallback()],
         compute_metrics=compute_mlm_metrics,
         optimizers=(create_optimizer(model, training_args), None)
     )
@@ -189,10 +201,8 @@ def main():
 
     trainer.train()
 
-    dataset_name = os.path.splitext(os.path.basename(args.dataset_path))[0]
-
-    model_save_path = os.path.join(args.output_dir, f"{dataset_name}-{args.model_name}")
-    trainer.save_model(model_save_path)
+    if best_acc < 0:
+        raise RuntimeError("训练完成但从未触发最优权重保存 (eval_mask_accuracy 始终未评估?), 请检查")
 
 
 
