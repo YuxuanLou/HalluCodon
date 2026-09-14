@@ -234,7 +234,7 @@ cd ../../..
 # output: tmp/top10_U.csv  (columns: cds_sequence, protein_sequence, csi_value)
 ```
 
-With a local genome CDS FASTA instead (e.g. K-12 `GCF_000005845.2_ASM584v2_cds_from_genomic.fna`), run the three steps manually:
+With a local genome CDS FASTA instead (e.g. the K-12 CDS annotation `Ecoli_cds.fna`, downloaded from NCBI Datasets as `GCF_000005845.2` → `*_cds_from_genomic.fna`), run the three steps manually:
 
 ```sh
 mkdir -p tmp
