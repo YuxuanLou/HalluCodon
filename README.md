@@ -215,11 +215,7 @@ Arabidopsis(https://zenodo.org/records/19126265), Canola(https://zenodo.org/reco
 
 ## How to add one new species
 
-To extend HalluCodon to a species not covered by the releases above, train both
-models on that species' own data — **CodonNAT first** (it scores codon naturalness
-and guides the optimizer search), then **CodonEXP** (it scores high-expression
-probability). The commands below run from the repository root, use
-***Escherichia coli***  as the worked example, and keep all intermediate files under `./tmp/`.
+To extend HalluCodon to a species not covered by the releases above, train both models on that species' own data — **CodonNAT** first (it scores codon naturalness), then **CodonEXP** (it scores high-expression probability). The commands below run from the repository root, use ***Escherichia coli***  as the worked example, and keep all intermediate files under `./tmp/`.
 
 ### Step 1 · CodonNAT: collect data and train
 
@@ -230,9 +226,7 @@ cd data_preparation/CodonNAT_data_generate
 ./01_download_assembly_summary.sh ../../../tmp/assembly_summary_genbank.txt
 ```
 
-**1b. High-CSI CDS training set.** The pipeline downloads the taxon's
-reference CDS from NCBI, keeps complete ORFs, de-duplicates by translated protein,
-builds a genome-wide codon-frequency table, ranks CDS by CSI against that table, and keeps the top 10%:
+**1b. High-CSI CDS training set.** The pipeline downloads the taxon's reference CDS from NCBI, keeps complete ORFs, de-duplicates by translated protein, builds a genome-wide codon-frequency table, ranks CDS by CSI against that table, and keeps the top 10%:
 
 ```sh
 ./02_build_top10_U.sh Escherichia -o ../../../tmp -a ../../../tmp/assembly_summary_genbank.txt
@@ -249,14 +243,12 @@ python data_preparation/filter_cds.py Ecoli_cds.fna tmp/ecoli_filtered.csv
 # genome-wide codon frequency table in codon_freq/ format (RNA/U)
 python data_preparation/count_codon_freq.py tmp/ecoli_filtered.csv codon_freq/Ecoli-codon-count.csv
 # rank by CSI vs that table, keep the top 10%
-python get_high_csi-seq.py --input tmp/ecoli_filtered.csv \
-    --codon_freq codon_freq/Ecoli-codon-count.csv --output tmp/Ecoli_top10.csv
+python get_high_csi-seq.py --input tmp/ecoli_filtered.csv --codon_freq codon_freq/Ecoli-codon-count.csv --output tmp/Ecoli_top10.csv
 ```
 
 Keep `codon_freq/Ecoli-codon-count.csv` — CodonHa uses it at optimization time.
 
 **1c. Train CodonNAT** (masked-codon self-supervised fine-tuning):
-
 ```sh
 python train_and_test/CodonNAT_train.py \
     --output_dir ./Ecoli_CodonNAT \
@@ -268,11 +260,7 @@ python train_and_test/CodonNAT_train.py \
 
 ### Step 2 · CodonEXP: collect data and train
 
-**2a. Expression-labeled CDS set.** Match a PaxDb protein-abundance dataset back
-to the species CDSs, binarize by abundance (top 1/3 = `high`, label 1; bottom 1/3 =
-`low`, label 0; middle third dropped), and de-duplicate proteins with cd-hit at
-90% identity:
-
+**2a. Expression-labeled CDS set.** Match a PaxDb protein-abundance dataset back to the species CDSs, binarize by abundance (top 1/3 = `high`, label 1; bottom 1/3 = `low`, label 0; middle third dropped), and de-duplicate proteins with cd-hit at 90% identity:
 ```sh
 cd data_preparation/CodonEXP_data_generate
 # 1) E. coli proteins + one abundance dataset from PaxDb v5.0
@@ -287,8 +275,7 @@ python3 paxdb-codonexp.py \
     --out ../../../Ecoli-0.9.csv \
     --threshold 90 --coverage 50 --parallel 8 --workdir ../../../tmp/paxdb-work
 cd ../../..
-# output columns: id, abundance, protein_sequence_ori, uniprot_id, exp, label,
-#                 cds_sequence, protein_sequence, similarity, coverage
+# output columns: id, abundance, protein_sequence_ori, uniprot_id, exp, label, cds_sequence, protein_sequence, similarity, coverage
 ```
 
 **2b. Train CodonEXP** (high/low classifier, 5-fold cross-validation):
@@ -300,6 +287,4 @@ python train_and_test/CodonEXP_train_and_test.py \
 # fold weights -> Ecoli-CodonEXP/classification-model-fold-{1..5}
 # per-fold and ensemble metrics on the held-out 20% test set are printed and saved
 ```
-To keep one single model instead of five folds (e.g. one model per tissue or
-condition), use `train_and_test/CodonEXP_train_single_tissue.py` with the same
-flags.
+To keep one single model instead of five folds (e.g. one model per tissue or condition), use `train_and_test/CodonEXP_train_single_tissue.py` with the same flags.
