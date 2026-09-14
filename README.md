@@ -54,6 +54,23 @@ HalluCodon is a species-specific codon optimization framework designed for plant
    --local-dir-use-symlinks False
    ```
 
+### 3. External tools for data preparation
+
+Building the CodonNAT/CodonEXP training datasets additionally requires two
+command-line tools on your `PATH` (`pip install -r requirements.txt` already
+covers all Python-side dependencies, e.g. `pandas`/`biopython`):
+
+   ```sh
+   # NCBI BLAST+ (provides blastp and makeblastdb) — protein-to-CDS matching
+   conda install -c bioconda blast
+
+   # cd-hit (provides cd-hit and cd-hit-est) — protein/nucleotide de-duplication
+   conda install -c bioconda cd-hit
+   ```
+
+These are only needed for the pipelines under `data_preparation/`; the trained
+models and optimizers run without them.
+
 
 
 
