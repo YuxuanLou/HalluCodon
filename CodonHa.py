@@ -677,7 +677,7 @@ def main():
     parser.add_argument('--patience', type=int, default=20)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--top_n_return', type=int, default=1)
+    parser.add_argument('--top_n', '--top_n_return', type=int, default=1, dest='top_n_return')
     parser.add_argument('--naturalness_weight', type=float, default=1)
     parser.add_argument('--max_iterations', type=int, default=96)
     parser.add_argument('--min_expression_threshold', type=float, default=0.9)

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # Usage information and argument handling
 usage() {

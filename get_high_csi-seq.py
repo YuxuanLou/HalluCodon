@@ -14,9 +14,11 @@ def load_codon_table(codon_count_file):
     df = pd.read_csv(codon_count_file)
 
     # Preprocess: find the most frequent codon count for each amino acid
+    # (normalize codons to DNA/T: the frequency tables are in RNA/U while the
+    #  input CDS sequences may be in either alphabet)
     for _, row in df.iterrows():
         aa = row['aa']
-        codon = row['codon']
+        codon = str(row['codon']).upper().replace('U', 'T')
         count = row['count']
         if count > aa_max_count[aa]:
             aa_max_count[aa] = count
@@ -24,7 +26,7 @@ def load_codon_table(codon_count_file):
     # Build codon table: {codon: (amino acid, relative adaptiveness)}
     for _, row in df.iterrows():
         aa = row['aa']
-        codon = row['codon']
+        codon = str(row['codon']).upper().replace('U', 'T')
         count = row['count']
         if aa_max_count[aa] > 0:
             w_ij = count / aa_max_count[aa]
@@ -41,7 +43,9 @@ def calculate_csi(cds_sequence, codon_table):
     valid_codons = 0
 
     for i in range(0, len(cds_sequence), 3):
-        codon = cds_sequence[i:i + 3].upper()
+        codon = cds_sequence[i:i + 3].upper().replace('U', 'T')
+        if codon not in codon_table:
+            continue
         _, w_ij = codon_table[codon]
         if w_ij > 0:
             total_ln_w += math.log(w_ij)
@@ -73,6 +77,15 @@ def main():
 
     # Read the input sequence file
     df = pd.read_csv(args.input)
+
+    # Accept both column spellings (filter_cds.py emits cds_sequence_dna)
+    if 'cds_sequence' not in df.columns:
+        if 'cds_sequence_dna' in df.columns:
+            df = df.rename(columns={'cds_sequence_dna': 'cds_sequence'})
+        else:
+            raise KeyError(
+                "Input CSV must contain a 'cds_sequence' (or 'cds_sequence_dna') "
+                f"column; found: {list(df.columns)}")
 
     # Compute CSI for each sequence
     df['csi_value'] = df['cds_sequence'].apply(

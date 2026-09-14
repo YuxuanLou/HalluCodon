@@ -116,6 +116,10 @@ def main():
         check=True)
     n_matched = max(0, sum(1 for _ in open(matched_csv)) - 1)
     print(f"      Matched {n_matched} sequences")
+    if n_matched == 0:
+        sys.exit("Error: no proteins matched the CDS set "
+                 f"(threshold {args.threshold}% identity, {args.coverage}% coverage). "
+                 "Check that the CDS FASTA and PaxDb dataset come from the same species.")
 
     print("[5/5] cd-hit 0.9 de-redundancy ...")
     subprocess.run(["bash", CDHIT, "-d", ",", matched_csv, args.out], check=True)

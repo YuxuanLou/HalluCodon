@@ -292,7 +292,7 @@ python3 paxdb-codonexp.py \
     --out ../../../Ecoli-0.9.csv \
     --threshold 90 --coverage 50 --parallel 8 --workdir ../../../tmp/paxdb-work
 cd ../../..
-# output columns: id, abundance, protein_sequence_ori, uniprot_id, exp, label, cds_sequence, protein_sequence, similarity, coverage
+# output columns: id, abundance, protein_sequence_ori, exp, label, cds_sequence, protein_sequence, similarity, coverage
 ```
 
 **2b. Train CodonEXP** (high/low classifier, 5-fold cross-validation):
