@@ -219,33 +219,28 @@ To extend HalluCodon to a species not covered by the releases above, train both
 models on that species' own data — **CodonNAT first** (it scores codon naturalness
 and guides the optimizer search), then **CodonEXP** (it scores high-expression
 probability). The commands below run from the repository root, use
-**Escherichia coli** (genus *Escherichia*, NCBI taxid **511145**, strain K-12) as
-the worked example, and keep all intermediate files under `./tmp/`.
+***Escherichia coli***  as the worked example, and keep all intermediate files under `./tmp/`.
 
 ### Step 1 · CodonNAT: collect data and train
 
-**1a. Download the NCBI assembly summary** (resumable; skipped automatically if
-it already exists — `02_build_top10_U.sh` can also fetch it on demand):
+**1a. Download the NCBI assembly summary**:
 
 ```sh
 cd data_preparation/CodonNAT_data_generate
 ./01_download_assembly_summary.sh ../../../tmp/assembly_summary_genbank.txt
 ```
 
-**1b. High-CSI CDS training set.** The one-command pipeline downloads the taxon's
+**1b. High-CSI CDS training set.** The pipeline downloads the taxon's
 reference CDS from NCBI, keeps complete ORFs, de-duplicates by translated protein,
-builds a genome-wide codon-frequency table, ranks CDS by codon stability index
-(CSI) against that table, and keeps the top 10% (converted to RNA alphabet):
+builds a genome-wide codon-frequency table, ranks CDS by CSI against that table, and keeps the top 10%:
 
 ```sh
-./02_build_top10_U.sh Escherichia -o ../../../tmp \
-    -a ../../../tmp/assembly_summary_genbank.txt
+./02_build_top10_U.sh Escherichia -o ../../../tmp -a ../../../tmp/assembly_summary_genbank.txt
 cd ../../..
 # output: tmp/top10_U.csv  (columns: cds_sequence, protein_sequence, csi_value)
 ```
 
-With a local genome CDS FASTA instead (e.g. K-12
-`GCF_000005845.2_ASM584v2_cds_from_genomic.fna`), run the three steps manually:
+With a local genome CDS FASTA instead (e.g. K-12 `GCF_000005845.2_ASM584v2_cds_from_genomic.fna`), run the three steps manually:
 
 ```sh
 mkdir -p tmp
@@ -271,16 +266,10 @@ python train_and_test/CodonNAT_train.py \
 # best epoch kept by validation mask accuracy; weights only, no optimizer checkpoints
 ```
 
-Both encoders start from pretrained weights (mRNA-FM for the CDS, ESM2-650M for
-the protein) and are fine-tuned together at lr 1e-4 with AdamW (weight decay 0.01).
-Training masks random codons and minimizes cross-entropy on the masked positions,
-on an 80/10/10 train/val/test split (`random_state=42`), batch size 4, max length
-1024, up to 50 epochs with early stopping (patience 5).
-
 ### Step 2 · CodonEXP: collect data and train
 
 **2a. Expression-labeled CDS set.** Match a PaxDb protein-abundance dataset back
-to the species CDS, binarize by abundance (top 1/3 = `high`, label 1; bottom 1/3 =
+to the species CDSs, binarize by abundance (top 1/3 = `high`, label 1; bottom 1/3 =
 `low`, label 0; middle third dropped), and de-duplicate proteins with cd-hit at
 90% identity:
 
@@ -289,10 +278,8 @@ cd data_preparation/CodonEXP_data_generate
 # 1) E. coli proteins + one abundance dataset from PaxDb v5.0
 ./get-paxdb-proteins.sh 511145 ../../../tmp/fasta.v11.5.511145.fa
 ./get-paxdb-dataset.sh 511145 list                       # list available datasets
-./get-paxdb-dataset.sh 511145 WHOLE_ORGANISM-integrated \
-    ../../../tmp/511145-WHOLE_ORGANISM-integrated.txt
-# 2) proteins -> CDS (exact match first, then one batched BLASTP run;
-#    >=90% identity, >=50% coverage), binarize, cd-hit 0.9 de-duplication
+./get-paxdb-dataset.sh 511145 WHOLE_ORGANISM-integrated ../../../tmp/511145-WHOLE_ORGANISM-integrated.txt
+# 2) proteins -> CDS
 python3 paxdb-codonexp.py \
     --cds ../../../Ecoli_cds.fna \
     --dataset ../../../tmp/511145-WHOLE_ORGANISM-integrated.txt \
@@ -313,38 +300,6 @@ python train_and_test/CodonEXP_train_and_test.py \
 # fold weights -> Ecoli-CodonEXP/classification-model-fold-{1..5}
 # per-fold and ensemble metrics on the held-out 20% test set are printed and saved
 ```
-
-The data are split 80/20 with stratification (`random_state=42`), and the 80% is
-further divided into 5 cross-validation folds (`random_state=100`). Both encoders
-(mRNA-FM for the CDS, ESM2-650M for the protein) start from pretrained weights and
-are fine-tuned at lr 1e-5, while the custom head (attention pooling plus an MLP
-with a single logit) trains at lr 1e-3. The loss is `BCEWithLogitsLoss` plus an
-equal-weight auxiliary loss on the CDS branch; the RNA/protein fusion weights are
-learned and reported per fold. Each fold runs for 20 epochs (batch 4, eval 16, max
-length 1024), and the best epoch is chosen by validation f1 — saved as weights
-only, without optimizer state.
-
 To keep one single model instead of five folds (e.g. one model per tissue or
 condition), use `train_and_test/CodonEXP_train_single_tissue.py` with the same
 flags.
-
-### Step 3 · Use the new species
-
-Point the optimizers at the trained weights and the species codon table:
-
-```sh
-# initialize CDS from a target protein
-python CodonIni.py \
-    --model_path ./Ecoli_CodonNAT/Ecoli_top10-Ecoli-CodonNAT \
-    --input_file ./input_pro.fasta --output_file ./CodonIni.fasta
-
-# hallucination-aided optimization
-python CodonHa.py \
-    --CodonEXP_model_dir ./Ecoli-CodonEXP \
-    --CodonNAT_model_dir ./Ecoli_CodonNAT/Ecoli_top10-Ecoli-CodonNAT \
-    --codon_frequency_file ./codon_freq/Ecoli-codon-count.csv \
-    --input ./CodonIni.fasta --output ./CodonHa.fasta --results_dir ./results
-```
-
-`CodonGa.py` and `Ha-GC3.py` take the same model paths; see *Usage* above.
-
